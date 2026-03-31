@@ -28,9 +28,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
 @keyframes rise{0%{transform:translateY(110vh);opacity:0;}40%{opacity:0.06;}100%{transform:translateY(-20vh);opacity:0;}}
 
 /* LANG BUTTON */
-#lang-btn{position:fixed;top:8px;right:10px;z-index:30;background:rgba(91,163,201,0.15);
-  border:1px solid rgba(91,163,201,0.3);color:var(--blue);font-family:'Exo 2',sans-serif;
-  font-weight:700;font-size:11px;padding:5px 12px;border-radius:20px;cursor:pointer;}
+#lang-btn{position:fixed;top:10px;left:50%;transform:translateX(-50%);
+  z-index:30;background:rgba(27,42,74,0.85);
+  border:1px solid rgba(91,163,201,0.4);color:var(--blue);font-family:'Exo 2',sans-serif;
+  font-weight:700;font-size:11px;padding:6px 18px;border-radius:20px;cursor:pointer;
+  backdrop-filter:blur(4px);letter-spacing:1px;}
 
 /* SCREENS */
 .scr{position:absolute;inset:0;display:none;flex-direction:column;z-index:1;}
