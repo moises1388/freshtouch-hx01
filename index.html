@@ -295,6 +295,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
 .toast.er{border-color:var(--red);color:var(--red);}
 .toast.in{border-color:var(--blue);color:var(--blue);}
 </style>
+<script>
+// Stub functions available immediately for onclick handlers
+(function(){
+  var _q=[];
+  function stub(fn){return function(){if(window['_'+fn])window['_'+fn].apply(this,arguments);else _q.push([fn,arguments]);};}
+  var fns=['go','admTap','toggleLang','selectPlan','openCode','confirmQR','kp','sessAction',
+           'startExtraDry','finishSess','submitInvoice','pinTap','closePIN','checkPIN',
+           'exitAdmin','openEmg','closeEmg','emergencyOpen','genCode','toggleSusp',
+           'saveSettings','testCycle','relay','DB'];
+  fns.forEach(function(f){window[f]=stub(f);});
+  window._flushQ=function(){_q.forEach(function(item){if(window['_'+item[0]])window['_'+item[0]].apply(null,item[1]);});_q=[];};
+})();
+</script>
 </head>
 <body>
 <div class="bubbles" id="bbl"></div>
@@ -878,6 +891,7 @@ function applyLang(){
 
 function toggleLang(){
   LANG=LANG==='es'?'en':'es';
+  window.LANG=LANG;
   applyLang();
   if(STATE.currentRole) renderAdmin(STATE.currentRole);
 }
@@ -1449,8 +1463,51 @@ function toast(msg,type='in'){
 }
 
 // ══════════════════════════════════
-// INIT
+// INIT — expose to window for onclick handlers
 // ══════════════════════════════════
+// Expose real functions replacing stubs
+window._go=go; window._admTap=admTap; window._toggleLang=toggleLang;
+window._selectPlan=selectPlan; window._openCode=openCode; window._confirmQR=confirmQR;
+window._kp=kp; window._sessAction=sessAction; window._startExtraDry=startExtraDry;
+window._finishSess=finishSess; window._submitInvoice=submitInvoice;
+window._pinTap=pinTap; window._closePIN=closePIN; window._checkPIN=checkPIN;
+window._exitAdmin=exitAdmin; window._openEmg=openEmg; window._closeEmg=closeEmg;
+window._emergencyOpen=emergencyOpen; window._genCode=genCode;
+window._toggleSusp=toggleSusp; window._saveSettings=saveSettings; window._testCycle=testCycle;
+window._relay=relay;
+window._CFG = CFG;
+window._T = T;
+window.STATE = STATE;
+window.DB = DB;
+window.LANG = LANG;
+// Bind all functions
+window._openCode = openCode;
+window._confirmQR = confirmQR;
+window._kp = kp;
+window._sessAction = sessAction;
+window._startExtraDry = startExtraDry;
+window._finishSess = finishSess;
+window._submitInvoice = submitInvoice;
+window._pinTap = pinTap;
+window._closePIN = closePIN;
+window._checkPIN = checkPIN;
+window._exitAdmin = exitAdmin;
+window._emergencyOpen = emergencyOpen;
+window._genCode = genCode;
+window._toggleSusp = toggleSusp;
+window._saveSettings = saveSettings;
+window._testCycle = testCycle;
+window.renderAdmin = renderAdmin;
+window.applyLang = applyLang;
+window.relay = relay;
+window._STATE = STATE;
+// Override go with full version now that everything is loaded
+window.go = go;
+window.admTap = admTap;
+window.toggleLang = toggleLang;
+window.selectPlan = selectPlan;
+// Also fix LANG sync
+window.LANG = LANG;
 applyLang();
 if(CFG.suspended) document.getElementById('susp-ov').classList.add('on');
 if('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(()=>{});
