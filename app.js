@@ -352,8 +352,6 @@ function selectPlan(plan){
   const price=plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   const lbl=t()[plan==='basic'?'basic_name':'premium_name'];
   document.getElementById('pay-plan-lbl').textContent=lbl+' — Q'+price;
-  document.getElementById('qr-plan-lbl').textContent='Q'+price+'.00';
-
   document.getElementById('nfc-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('nfc-amt-big').textContent='Q'+price+'.00';
   go('s-payment');
