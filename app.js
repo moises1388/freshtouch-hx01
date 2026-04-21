@@ -421,12 +421,16 @@ function updateSessUI(){
     document.getElementById('sess-sub').textContent=l.sess_open_s;
     document.getElementById('sess-btn').textContent=l.btn_open;
     document.getElementById('sess-btn').className='btn-act blue';
+    document.getElementById('sess-btn').disabled=false;
+    document.getElementById('sess-btn').style.opacity='1';
   }else{
     document.getElementById('sess-anim').innerHTML='<img src="img/img02.png" style="height:64px;object-fit:contain;">';
     document.getElementById('sess-inst').textContent=l.sess_start_i;
     document.getElementById('sess-sub').textContent=l.sess_start_s;
     document.getElementById('sess-btn').textContent=l.btn_start;
     document.getElementById('sess-btn').className='btn-act green';
+    document.getElementById('sess-btn').disabled=false;
+    document.getElementById('sess-btn').style.opacity='1';
   }
 }
 function sessAction(){
@@ -443,8 +447,8 @@ function startVaporCountdown(){
   btn.disabled=true;btn.style.opacity='0.5';
   document.getElementById('sess-anim').textContent='💧';
   document.getElementById('sess-inst').textContent='Precalentando vapor...';
-  relay('vapor',true);
-  relay('luzuv',true);
+  relay(CFG.relayVapor,true);
+  relay(CFG.relayUV,true);
   DB.addLog('💧','Precalentando vapor — 10 segundos');
   let secs=10;
   document.getElementById('sess-sub').textContent='Iniciando en '+secs+' segundos...';
@@ -470,25 +474,25 @@ function startSessTO(){
 const CYCLES={
   basic:[
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
-      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onTick(l){},onEnd(){relay('vapor',false);}},
+      onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
+      onTick(l){},onEnd(){relay(CFG.relayVapor,false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
-      onStart(){relay('secado',true);},
+      onStart(){relay(CFG.relaySec,true);},
       onTick(l){},
-      onEnd(){relay('secado',false);}},
+      onEnd(){relay(CFG.relaySec,false);}},
     {nm:'cyc_a',ico:'🌸',lbl:'p3b',dur:3,ph:2,
-      onStart(){},onTick(){},onEnd(){relay('luzuv',false);}},
+      onStart(){},onTick(){},onEnd(){relay(CFG.relayUV,false);}},
   ],
   premium:[
     {nm:'cyc_v',ico:'💧',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
-      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onTick(){},onEnd(){relay('vapor',false);}},
+      onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
+      onTick(){},onEnd(){relay(CFG.relayVapor,false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2p',dur:CFG.durSecPremium,ph:1,
-      onStart(){relay('secado',true);},
+      onStart(){relay(CFG.relaySec,true);},
       onTick(l){},
-      onEnd(){relay('secado',false);}},
+      onEnd(){relay(CFG.relaySec,false);}},
     {nm:'cyc_a',ico:'🌸',lbl:'p3p',dur:3,ph:2,
-      onStart(){},onTick(){},onEnd(){relay('luzuv',false);}},
+      onStart(){},onTick(){},onEnd(){relay(CFG.relayUV,false);}},
   ]
 };
 let cyPhIdx=0,cySecs=0,cyDur=0,cyCurPh=null;
@@ -544,7 +548,7 @@ function cycleDone(){
 function startExtraDry(){
   document.getElementById('btn-extra').style.display='none';
   document.getElementById('extra-run').style.display='block';
-  relay('secado',true);
+  relay(CFG.relaySec,true);
   DB.addLog('💨','Secado extra +1min');
   let s=60;
   clearInterval(STATE.extraTimer);
@@ -552,7 +556,7 @@ function startExtraDry(){
     s--;
     const m=Math.floor(s/60),sec=s%60;
     document.getElementById('extra-timer').textContent=m+':'+(sec<10?'0':'')+sec;
-    if(s<=0){clearInterval(STATE.extraTimer);relay('secado',false);document.getElementById('extra-run').textContent='✅ Listo';}
+    if(s<=0){clearInterval(STATE.extraTimer);relay(CFG.relaySec,false);document.getElementById('extra-run').textContent='✅ Listo';}
   },1000);
 }
 

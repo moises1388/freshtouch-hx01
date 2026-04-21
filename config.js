@@ -31,6 +31,12 @@ const CFG = {
   pinTech:   '7890',          // Técnico             (4 dígitos)
   pinTenant: '1111',          // Inquilino           (4 dígitos — diferente a pinTech)
 
+  // ── NOMBRES DE RELAYS (deben coincidir con el firmware del ESP32) ──
+  relayVapor:  'vapor',         // relay del vapor
+  relaySec:    'secado',        // relay del secado/ventilador
+  relayUV:     'luzuv',         // relay luz UV pin 18 ← cambiar si el ESP32 usa otro nombre
+  relayPuerta: 'puerta',        // relay de la puerta
+
   // ── SISTEMA ──────────────────────────────────────────────
   suspended:    false,
   suspendedMsg: 'Equipo fuera de servicio temporalmente.',
