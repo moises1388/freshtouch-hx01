@@ -7,12 +7,12 @@ const T={
     idle_title:'Limpieza Profesional<br>para tu <span>Casco</span>',
     idle_sub:'Vapor &middot; Secado &middot; Aroma &middot; Antibacterial',
     idle_btn:'INICIAR LIMPIEZA',idle_price:'Basico Q20 &middot; Premium Q35',
-    f1:'🌫️ Vapor',f2:'💨 Secado',f3:'🌸 Aroma',
+    f1:'💧 Vapor',f2:'💨 Secado',f3:'🌸 Aroma',
     plan_title:'Elige tu Plan',plan_sub:'Selecciona el servicio',
     basic_badge:'BASICO',premium_badge:'⭐ PREMIUM',
     basic_name:'Limpieza Basica',premium_name:'Limpieza Premium',
-    basic_steps:['🌫️ Vapor 45 segundos','💨 Secado 2 minutos','🌸 Aroma 10 segundos','🦠 Antibacterial incluido'],
-    premium_steps:['🌫️ Vapor extendido 75s','💨 Secado 4 minutos','🌸 Aroma premium 10s','🦠 Antibacterial doble','⭐ Ciclo profundo'],
+    basic_steps:['💧 Vapor 45 segundos','💨 Secado 2 minutos','🌸 Aroma 10 segundos','🦠 Antibacterial incluido'],
+    premium_steps:['💧 Vapor extendido 75s','💨 Secado 4 minutos','🌸 Aroma premium 10s','🦠 Antibacterial doble','⭐ Ciclo profundo'],
     sel:'SELECCIONAR',
     pay_title:'Metodo de Pago',
     pay_nfc_t:'Tarjeta / NFC',pay_nfc_s:'Acerca tu tarjeta<br>o paga sin contacto',
@@ -35,7 +35,7 @@ const T={
     sess_start_s:'Asegurate que la puerta este bien cerrada',
     btn_open:'🔓 ABRIR PUERTA',btn_close:'🔒 CERRAR PUERTA',btn_start:'▶ INICIAR LIMPIEZA',
     cyc_title:'Ciclo en Progreso',cyc_warn:'NO ABRIR LA PUERTA DURANTE EL PROCESO',
-    ph0:'🌫️ Vapor',ph1:'💨 Secado',ph2:'🌸 Aroma',
+    ph0:'💧 Vapor',ph1:'💨 Secado',ph2:'🌸 Aroma',
     cyc_v:'Vaporizando',cyc_d:'Secando',cyc_a:'Aromatizando',
     p1b:'FASE 1 DE 3 - Vapor',p2b:'FASE 2 DE 3 - Secado',p3b:'FASE 3 DE 3 - Aroma',
     p1p:'FASE 1 DE 3 - Vapor Extendido',p2p:'FASE 2 DE 3 - Secado Premium',p3p:'FASE 3 DE 3 - Aroma',
@@ -85,12 +85,12 @@ const T={
     idle_title:'Professional Cleaning<br>for your <span>Helmet</span>',
     idle_sub:'Steam &middot; Drying &middot; Aroma &middot; Antibacterial',
     idle_btn:'START CLEANING',idle_price:'Basic Q20 &middot; Premium Q35',
-    f1:'🌫️ Steam',f2:'💨 Drying',f3:'🌸 Aroma',
+    f1:'💧 Steam',f2:'💨 Drying',f3:'🌸 Aroma',
     plan_title:'Choose Your Plan',plan_sub:'Select the service',
     basic_badge:'BASIC',premium_badge:'⭐ PREMIUM',
     basic_name:'Basic Cleaning',premium_name:'Premium Cleaning',
-    basic_steps:['🌫️ Steam 45 seconds','💨 Drying 2 minutes','🌸 Aroma 10 seconds','🦠 Antibacterial included'],
-    premium_steps:['🌫️ Extended steam 75s','💨 Drying 4 minutes','🌸 Premium aroma 10s','🦠 Double antibacterial','⭐ Deep cycle'],
+    basic_steps:['💧 Steam 45 seconds','💨 Drying 2 minutes','🌸 Aroma 10 seconds','🦠 Antibacterial included'],
+    premium_steps:['💧 Extended steam 75s','💨 Drying 4 minutes','🌸 Premium aroma 10s','🦠 Double antibacterial','⭐ Deep cycle'],
     sel:'SELECT',
     pay_title:'Payment Method',
     pay_nfc_t:'Card / NFC',pay_nfc_s:'Tap your card<br>or pay contactless',
@@ -113,7 +113,7 @@ const T={
     sess_start_s:'Make sure the door is properly closed',
     btn_open:'🔓 OPEN DOOR',btn_close:'🔒 CLOSE DOOR',btn_start:'▶ START CLEANING',
     cyc_title:'Cycle in Progress',cyc_warn:'DO NOT OPEN THE DOOR DURING THE PROCESS',
-    ph0:'🌫️ Steam',ph1:'💨 Drying',ph2:'🌸 Aroma',
+    ph0:'💧 Steam',ph1:'💨 Drying',ph2:'🌸 Aroma',
     cyc_v:'Steaming',cyc_d:'Drying',cyc_a:'Scenting',
     p1b:'PHASE 1 OF 3 - Steam',p2b:'PHASE 2 OF 3 - Drying',p3b:'PHASE 3 OF 3 - Aroma',
     p1p:'PHASE 1 OF 3 - Extended Steam',p2p:'PHASE 2 OF 3 - Premium Drying',p3p:'PHASE 3 OF 3 - Aroma',
@@ -441,10 +441,10 @@ function startVaporCountdown(){
   clearInterval(STATE.sessTO);
   const btn=document.getElementById('sess-btn');
   btn.disabled=true;btn.style.opacity='0.5';
-  document.getElementById('sess-anim').textContent='🌫️';
+  document.getElementById('sess-anim').textContent='💧';
   document.getElementById('sess-inst').textContent='Precalentando vapor...';
   relay('vapor',true);
-  DB.addLog('🌫️','Precalentando vapor — 10 segundos');
+  DB.addLog('💧','Precalentando vapor — 10 segundos');
   let secs=10;
   document.getElementById('sess-sub').textContent='Iniciando en '+secs+' segundos...';
   clearInterval(STATE.vaporCD);
@@ -468,7 +468,7 @@ function startSessTO(){
 // CYCLE
 const CYCLES={
   basic:[
-    {nm:'cyc_v',ico:'🌫️',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
+    {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
       onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
@@ -479,7 +479,7 @@ const CYCLES={
       onStart(){},onTick(){},onEnd(){relay('luzuv',false);}},
   ],
   premium:[
-    {nm:'cyc_v',ico:'🌫️',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
+    {nm:'cyc_v',ico:'💧',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
       onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2p',dur:CFG.durSecPremium,ph:1,
