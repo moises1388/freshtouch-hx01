@@ -471,6 +471,7 @@ const CYCLES={
   basic:[
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
       onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
+      onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
       onStart(){relay('secado',true);},
@@ -482,6 +483,7 @@ const CYCLES={
   premium:[
     {nm:'cyc_v',ico:'💧',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
       onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
+      onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2p',dur:CFG.durSecPremium,ph:1,
       onStart(){relay('secado',true);},
