@@ -186,8 +186,6 @@ function applyLang(){
   document.getElementById('tpay-title').textContent=l.pay_title;
   document.getElementById('tpay-nfc-t').textContent=l.pay_nfc_t;
   document.getElementById('tpay-nfc-s').innerHTML=l.pay_nfc_s;
-  document.getElementById('tpay-qr-t').textContent=l.pay_qr_t;
-  document.getElementById('tpay-qr-s').innerHTML=l.pay_qr_s;
   document.getElementById('tpay-cash-t').textContent=l.pay_cash_t;
   document.getElementById('tpay-cash-s').innerHTML=l.pay_cash_s;
   document.getElementById('tpay-pro-t').textContent=l.pay_pro_t;
@@ -197,13 +195,6 @@ function applyLang(){
   document.getElementById('tnfc-sub').innerHTML=l.nfc_sub;
   document.getElementById('tnfc-status').textContent=l.nfc_status;
   document.getElementById('tnfc-manual').textContent=l.nfc_manual;
-  document.getElementById('tqr-title').textContent=l.qr_title;
-  document.getElementById('tqr-scan').textContent=l.qr_scan;
-  document.getElementById('tqr-already').textContent=l.qr_already;
-  document.getElementById('tqr-instr').innerHTML=l.qr_instr;
-  document.getElementById('tqr-lbl').textContent=l.qr_lbl;
-  document.getElementById('tqr-btn').textContent=l.qr_btn;
-  document.getElementById('tqr-exp').textContent=l.qr_exp;
   document.getElementById('tsess-title').textContent=l.sess_title;
   document.getElementById('ts1').textContent=l.s1;
   document.getElementById('ts2').textContent=l.s2;
@@ -243,7 +234,7 @@ function applyLang(){
   document.getElementById('temg-cancel').textContent=l.cancel;
   document.getElementById('tsusp-title').textContent=l.susp_title;
   document.getElementById('lang-btn').textContent=l.lang;
-  ['tp-back','tpay-back','tqr-back','tcode-back','tinv-back','tnfc-back'].forEach(id=>document.getElementById(id).textContent=l.back);
+  ['tp-back','tpay-back','tcode-back','tinv-back','tnfc-back'].forEach(id=>document.getElementById(id).textContent=l.back);
 }
 function toggleLang(){LANG=LANG==='es'?'en':'es';applyLang();if(STATE.role)renderAdmin(STATE.role);}
 
