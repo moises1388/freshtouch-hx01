@@ -444,6 +444,7 @@ function startVaporCountdown(){
   document.getElementById('sess-anim').textContent='💧';
   document.getElementById('sess-inst').textContent='Precalentando vapor...';
   relay('vapor',true);
+  relay('luzuv',true);
   DB.addLog('💧','Precalentando vapor — 10 segundos');
   let secs=10;
   document.getElementById('sess-sub').textContent='Iniciando en '+secs+' segundos...';
@@ -469,6 +470,7 @@ function startSessTO(){
 const CYCLES={
   basic:[
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
+      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
@@ -480,6 +482,7 @@ const CYCLES={
   ],
   premium:[
     {nm:'cyc_v',ico:'💧',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
+      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onTick(){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2p',dur:CFG.durSecPremium,ph:1,
