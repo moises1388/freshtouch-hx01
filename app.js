@@ -352,6 +352,7 @@ function selectPlan(plan){
 function nfcManualConfirm(){
   const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   DB.addLog('📲','Pago NFC manual Q'+amt);
+  registrarVenta(amt, "NFC");
   toast(t().tk.nfc_ok,'ok');
   setTimeout(activateSess,600);
 }
@@ -359,6 +360,26 @@ function nfcManualConfirm(){
 // NFC only — QR removed
 
 // CODE
+
+// WEBHOOK VENTAS
+async function registrarVenta(monto, metodoPago, codigoUsado = "") {
+  try {
+    await fetch(CFG.makeVentasWebhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        maquina_id: CFG.machineId,
+        monto: monto,
+        metodo_pago: metodoPago,
+        codigo_usado: codigoUsado,
+        timestamp: new Date().toISOString()
+      })
+    });
+  } catch (e) {
+    console.warn("Webhook de venta falló (no crítico):", e);
+  }
+}
+
 function kp(key){
   if(key==='DEL'){STATE.codeInput=STATE.codeInput.slice(0,-1);}
   else if(key==='OK'){validateCode();}
@@ -386,6 +407,9 @@ function validateCode(){
     DB.useCode(STATE.codeInput);
     if(found.plan)STATE.plan=found.plan;
     DB.addLog('🎫','Codigo '+found.type+': '+STATE.codeInput);
+    const _precio=( (found.plan||STATE.plan)==='basic'?CFG.priceBasic:CFG.pricePremium );
+    if(found.type==='cash') registrarVenta(_precio, "cash", STATE.codeInput);
+    else registrarVenta(0, "promo", STATE.codeInput);
     toast(t().tk.code_ok,'ok');
     setTimeout(activateSess,700);
   }else{
