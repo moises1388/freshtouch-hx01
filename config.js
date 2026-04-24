@@ -43,4 +43,7 @@ const CFG = {
   infileMode:   'sandbox',    // 'sandbox' | 'production'
   businessName: 'FreshTouch by HYDROX',
 
+  // ── WEBHOOK MAKE.COM ────────────────────────────────────
+  makeVentasWebhook: "https://hook.make.com/PENDIENTE",
+
 };
