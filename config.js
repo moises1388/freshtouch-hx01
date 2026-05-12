@@ -11,7 +11,7 @@ const CFG = {
   machineId: 'HX01',          // ← Cambiar a: HX02, HX03, HX04...
 
   // ── RED (IP del ESP32 en el WiFi local) ──────────────────
-  esp32Ip: '192.168.43.200',  // ← IP del ESP32 de esta máquina
+  esp32Ip: '192.168.0.100',   // ← IP del ESP32 de esta máquina (MAC: 4c:c3:82:0c:79:84)
 
   // ── PRECIOS (en Quetzales) ───────────────────────────────
   priceBasic:   20,           // ← Precio Plan Básico (Q)
