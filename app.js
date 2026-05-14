@@ -272,6 +272,16 @@ if(DB.codes.length===0){
 
 // NAVIGATION
 function go(id){
+  if(id==='s-idle'){
+    clearInterval(STATE.cycTimer);
+    clearInterval(STATE.vaporCD);
+    clearInterval(STATE.sessTO);
+    clearInterval(STATE.extraTimer);
+    clearInterval(STATE.doneTimer);
+    relay(CFG.relayVapor,false);
+    relay(CFG.relaySec,false);
+    relay(CFG.relayUV,false);
+  }
   document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
   document.getElementById(id).classList.add('on');
   document.getElementById('wm').className=id==='s-cycle'?'wm-cycle':'';
@@ -458,6 +468,9 @@ function sessAction(){
 }
 function startVaporCountdown(){
   clearInterval(STATE.sessTO);
+  clearInterval(STATE.cycTimer);
+  clearInterval(STATE.extraTimer);
+  clearInterval(STATE.vaporCD);
   const btn=document.getElementById('sess-btn');
   btn.disabled=true;btn.style.opacity='0.5';
   document.getElementById('sess-anim').textContent='💧';
@@ -594,7 +607,9 @@ function startDoneTimer(){
 function finishSess(){
   clearInterval(STATE.doneTimer);
   clearInterval(STATE.extraTimer);
-  setDoor(false); // close door on manual finish
+  clearInterval(STATE.cycTimer);
+  clearInterval(STATE.vaporCD);
+  setDoor(false);
   go('s-idle');
 }
 
