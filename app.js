@@ -490,7 +490,6 @@ const CYCLES={
   basic:[
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
       onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
-      onStart(){relay(CFG.relayVapor,true);relay(CFG.relayUV,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay(CFG.relayVapor,false);}},
       onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
       onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
@@ -505,7 +504,6 @@ const CYCLES={
   premium:[
     {nm:'cyc_v',ico:'💧',lbl:'p1p',dur:CFG.durVapPremium,ph:0,
       onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
-      onStart(){relay(CFG.relayVapor,true);relay(CFG.relayUV,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
       onTick(){},onEnd(){relay(CFG.relayVapor,false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2p',dur:CFG.durSecPremium,ph:1,
       onStart(){relay(CFG.relaySec,true);},
