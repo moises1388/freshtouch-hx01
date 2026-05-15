@@ -278,9 +278,6 @@ function go(id){
     clearInterval(STATE.sessTO);
     clearInterval(STATE.extraTimer);
     clearInterval(STATE.doneTimer);
-    relay(CFG.relayVapor,false);
-    relay(CFG.relaySec,false);
-    relay(CFG.relayUV,false);
   }
   document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
   document.getElementById(id).classList.add('on');
