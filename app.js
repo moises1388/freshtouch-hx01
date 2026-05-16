@@ -15,17 +15,11 @@ const T={
     premium_steps:['💧 Vapor extendido 75s','💨 Secado 4 minutos','🌸 Aroma premium 10s','🦠 Antibacterial doble','⭐ Ciclo profundo'],
     sel:'SELECCIONAR',
     pay_title:'Metodo de Pago',
-    pay_nfc_t:'Tarjeta / NFC',pay_nfc_s:'Acerca tu tarjeta<br>o paga sin contacto',
     pay_qr_t:'Pago con QR',pay_qr_s:'Cubo &middot; Escanea y paga<br>desde tu celular',
     pay_cash_t:'Pague en Caja',pay_cash_s:'Ingresa el codigo<br>que te dieron',
     pay_pro_t:'Codigo Promocion',pay_pro_s:'Ingresa tu codigo<br>de descuento',
-    nfc_title:'Pago sin Contacto',nfc_main:'Acerca tu tarjeta al lector',
-    nfc_sub:'Visa, Mastercard, American Express<br>Debito o credito sin contacto',
-    nfc_status:'ESPERANDO TARJETA...',nfc_manual:'Confirmar pago manualmente',
-    qr_title:'Pago con QR',qr_scan:'Escanea con tu app bancaria',
-    qr_already:'Ya realizaste el pago?',
-    qr_instr:'Ingresa los ultimos <b>4 digitos</b> del comprobante.',
-    qr_lbl:'Ultimos 4 digitos',qr_btn:'CONFIRMAR PAGO',qr_exp:'Sesion expira en',
+    qr_title:'Pago con QR',qr_scan:'Abre tu app CUBO y escanea el codigo',
+    qr_status:'ESPERANDO CONFIRMACION...',qr_btn:'Confirmar pago manualmente',qr_exp:'Sesion expira en',
     code_cash_t:'Codigo de Caja',code_cash_s:'Ej: CJ-XXXX',
     code_pro_t:'Codigo Promocion',code_pro_s:'Ej: PR-XXXX',
     sess_title:'Sesion Activa',s1:'Abrir Puerta',s2:'Colocar Casco',s3:'Iniciar Ciclo',
@@ -78,7 +72,7 @@ const T={
       door_closed:'Puerta cerrada',sess_exp:'Sesion expirada',
       inv_f:'Nombre y correo requeridos',cfg:'Configuracion guardada',
       emg:'Puerta abierta - emergencia',code_gen:'Codigo generado:',
-      nfc_ok:'Pago NFC confirmado'},
+      qr_ok:'Pago QR CUBO confirmado'},
     test_lbl:'🧪 MODO PRUEBA',
   },
   en:{
@@ -93,17 +87,11 @@ const T={
     premium_steps:['💧 Extended steam 75s','💨 Drying 4 minutes','🌸 Premium aroma 10s','🦠 Double antibacterial','⭐ Deep cycle'],
     sel:'SELECT',
     pay_title:'Payment Method',
-    pay_nfc_t:'Card / NFC',pay_nfc_s:'Tap your card<br>or pay contactless',
     pay_qr_t:'Pay with QR',pay_qr_s:'Cubo &middot; Scan and pay<br>from your phone',
     pay_cash_t:'Paid at Counter',pay_cash_s:'Enter the code<br>you received',
     pay_pro_t:'Promo Code',pay_pro_s:'Enter your<br>discount code',
-    nfc_title:'Contactless Payment',nfc_main:'Tap your card on the reader',
-    nfc_sub:'Visa, Mastercard, American Express<br>Debit or credit contactless',
-    nfc_status:'WAITING FOR CARD...',nfc_manual:'Confirm payment manually',
-    qr_title:'QR Payment',qr_scan:'Scan with your banking app',
-    qr_already:'Did you complete the payment?',
-    qr_instr:'Enter the last <b>4 digits</b> of your receipt.',
-    qr_lbl:'Last 4 digits',qr_btn:'CONFIRM PAYMENT',qr_exp:'Session expires in',
+    qr_title:'QR Payment',qr_scan:'Open your CUBO app and scan the code',
+    qr_status:'WAITING FOR CONFIRMATION...',qr_btn:'Confirm payment manually',qr_exp:'Session expires in',
     code_cash_t:'Counter Code',code_cash_s:'Ex: CJ-XXXX',
     code_pro_t:'Promo Code',code_pro_s:'Ex: PR-XXXX',
     sess_title:'Active Session',s1:'Open Door',s2:'Place Helmet',s3:'Start Cycle',
@@ -156,7 +144,7 @@ const T={
       door_closed:'Door closed',sess_exp:'Session expired',
       inv_f:'Name and email required',cfg:'Settings saved',
       emg:'Door open - emergency',code_gen:'Code generated:',
-      nfc_ok:'NFC payment confirmed'},
+      qr_ok:'CUBO QR payment confirmed'},
     test_lbl:'🧪 TEST MODE',
   }
 };
@@ -184,17 +172,16 @@ function applyLang(){
   document.getElementById('basic-steps').innerHTML=l.basic_steps.map(s=>'<div class="plan-step">'+s+'</div>').join('');
   document.getElementById('premium-steps').innerHTML=l.premium_steps.map(s=>'<div class="plan-step">'+s+'</div>').join('');
   document.getElementById('tpay-title').textContent=l.pay_title;
-  document.getElementById('tpay-nfc-t').textContent=l.pay_nfc_t;
-  document.getElementById('tpay-nfc-s').innerHTML=l.pay_nfc_s;
+  document.getElementById('tpay-qr-t').textContent=l.pay_qr_t;
+  document.getElementById('tpay-qr-s').innerHTML=l.pay_qr_s;
   document.getElementById('tpay-cash-t').textContent=l.pay_cash_t;
   document.getElementById('tpay-cash-s').innerHTML=l.pay_cash_s;
   document.getElementById('tpay-pro-t').textContent=l.pay_pro_t;
   document.getElementById('tpay-pro-s').innerHTML=l.pay_pro_s;
-  document.getElementById('tnfc-title').textContent=l.nfc_title;
-  document.getElementById('tnfc-main').textContent=l.nfc_main;
-  document.getElementById('tnfc-sub').innerHTML=l.nfc_sub;
-  document.getElementById('tnfc-status').textContent=l.nfc_status;
-  document.getElementById('tnfc-manual').textContent=l.nfc_manual;
+  document.getElementById('tqr-title').textContent=l.qr_title;
+  document.getElementById('tqr-scan').textContent=l.qr_scan;
+  document.getElementById('tqr-status').textContent=l.qr_status;
+  document.getElementById('tqr-btn').textContent=l.qr_btn;
   document.getElementById('tsess-title').textContent=l.sess_title;
   document.getElementById('ts1').textContent=l.s1;
   document.getElementById('ts2').textContent=l.s2;
@@ -234,7 +221,7 @@ function applyLang(){
   document.getElementById('temg-cancel').textContent=l.cancel;
   document.getElementById('tsusp-title').textContent=l.susp_title;
   document.getElementById('lang-btn').textContent=l.lang;
-  ['tp-back','tpay-back','tcode-back','tinv-back','tnfc-back'].forEach(id=>document.getElementById(id).textContent=l.back);
+  ['tp-back','tpay-back','tcode-back','tinv-back','tqr-back'].forEach(id=>document.getElementById(id).textContent=l.back);
 }
 function toggleLang(){LANG=LANG==='es'?'en':'es';applyLang();if(STATE.role)renderAdmin(STATE.role);}
 
@@ -311,8 +298,27 @@ function playSound(type){
       const a=new Audio('sound_inicio.mp3');a.play().catch(()=>{});
     } else if(type==='retiro'){
       const a=new Audio('sound_retiro.mp3');a.play().catch(()=>{});
+    } else if(type==='puerta_abre'){
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const osc=ctx.createOscillator();const gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.type='sine';
+      osc.frequency.setValueAtTime(350,ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(750,ctx.currentTime+0.25);
+      gain.gain.setValueAtTime(0.45,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.35);
+    } else if(type==='puerta_cierra'){
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const osc=ctx.createOscillator();const gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.type='sine';
+      osc.frequency.setValueAtTime(750,ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(280,ctx.currentTime+0.25);
+      gain.gain.setValueAtTime(0.45,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+      osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.35);
     } else if(type==='campana'){
-      // Campana clásica ding-ding-ding via Web Audio API
       const ctx=new(window.AudioContext||window.webkitAudioContext)();
       function ding(t){
         const osc=ctx.createOscillator();
@@ -340,6 +346,7 @@ async function notifyCycleDone(tipo){
 function setDoor(open){
   STATE.doorOpen=open;
   relay('puerta',open);
+  playSound(open?'puerta_abre':'puerta_cierra');
   DB.addLog(open?'🔓':'🔒',open?'Puerta abierta':'Puerta cerrada');
   toast(open?t().tk.door_opened:t().tk.door_closed,open?'in':'ok');
 }
@@ -350,21 +357,43 @@ function selectPlan(plan){
   const price=plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   const lbl=t()[plan==='basic'?'basic_name':'premium_name'];
   document.getElementById('pay-plan-lbl').textContent=lbl+' — Q'+price;
-  document.getElementById('nfc-amt-lbl').textContent='Q'+price+'.00';
-  document.getElementById('nfc-amt-big').textContent='Q'+price+'.00';
+  document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
+  document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
   go('s-payment');
 }
 
-// NFC
-function nfcManualConfirm(){
+// QR CUBO
+let qrTimerInterval=null,qrTimerSecs=180;
+function openQR(){
+  const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+  document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
+  document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
+  const imgUrl=STATE.plan==='basic'?CFG.qrBasicImg:CFG.qrPremiumImg;
+  document.getElementById('qr-img').src=imgUrl;
+  startQRTimer();
+  go('s-qr');
+}
+function startQRTimer(){
+  clearInterval(qrTimerInterval);
+  qrTimerSecs=180;updateQRTimer();
+  qrTimerInterval=setInterval(()=>{
+    qrTimerSecs--;updateQRTimer();
+    if(qrTimerSecs<=0){clearInterval(qrTimerInterval);toast(t().tk.qr_exp,'er');go('s-payment');}
+  },1000);
+}
+function updateQRTimer(){
+  const m=Math.floor(qrTimerSecs/60),s=qrTimerSecs%60;
+  document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
+}
+function cancelQR(){clearInterval(qrTimerInterval);go('s-payment');}
+function qrManualConfirm(){
+  clearInterval(qrTimerInterval);
   const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
-  DB.addLog('📲','Pago NFC manual Q'+amt);
-  registrarVenta(amt, "NFC");
-  toast(t().tk.nfc_ok,'ok');
+  DB.addLog('📱','Pago QR CUBO Q'+amt);
+  registrarVenta(amt,'QR-CUBO');
+  toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
-
-// NFC only — QR removed
 
 // CODE
 
