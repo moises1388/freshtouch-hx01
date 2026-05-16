@@ -69,11 +69,11 @@
     <button class="btn-back" onclick="go('s-plan')" id="tpay-back">← Volver</button>
   </div>
   <div class="pay-body">
-    <div class="pay-opt nfc" onclick="go('s-nfc')">
-      <span class="pay-ico">📲</span>
-      <div class="pay-title" id="tpay-nfc-t">Tarjeta / NFC</div>
-      <div class="pay-sub" id="tpay-nfc-s">Acerca tu tarjeta<br>o paga sin contacto</div>
-      <div class="nfc-badge">TAP TO PAY</div>
+    <div class="pay-opt qr-opt" onclick="openQR()">
+      <span class="pay-ico">📱</span>
+      <div class="pay-title" id="tpay-qr-t">Pago con QR</div>
+      <div class="pay-sub" id="tpay-qr-s">Cubo &middot; Escanea y paga<br>desde tu celular</div>
+      <div class="qr-badge-sm">CUBO</div>
     </div>
 
     <div class="pay-opt" onclick="openCode('cash')">
@@ -89,20 +89,23 @@
   </div>
 </div>
 
-<!-- NFC -->
-<div class="scr" id="s-nfc">
+<!-- QR CUBO -->
+<div class="scr" id="s-qr">
   <div class="hdr">
     <img class="hdr-logo" src="img/img04.png" alt="HYDROX">
-    <div><div class="hdr-t" id="tnfc-title">Pago sin Contacto</div><div class="hdr-s" id="nfc-amt-lbl">Q20.00</div></div>
-    <button class="btn-back" onclick="go('s-payment')" id="tnfc-back">← Volver</button>
+    <div><div class="hdr-t" id="tqr-title">Pago con QR</div><div class="hdr-s" id="qr-amt-lbl">Q20.00</div></div>
+    <button class="btn-back" onclick="cancelQR()" id="tqr-back">← Volver</button>
   </div>
-  <div class="nfc-body">
-    <div class="nfc-amt" id="nfc-amt-big">Q20.00</div>
-    <div class="nfc-ring"><div class="nfc-icon">📲</div></div>
-    <div class="nfc-title" id="tnfc-main">Acerca tu tarjeta al lector</div>
-    <div class="nfc-sub" id="tnfc-sub">Visa, Mastercard, American Express<br>Débito o crédito sin contacto</div>
-    <div class="nfc-status" id="tnfc-status">ESPERANDO TARJETA...</div>
-    <button class="btn-nfc-manual" onclick="nfcManualConfirm()" id="tnfc-manual">Confirmar pago manualmente</button>
+  <div class="qr-body">
+    <div class="qr-amt" id="qr-amt-big">Q20.00</div>
+    <div class="qr-box">
+      <img id="qr-img" src="" alt="QR CUBO" class="qr-img">
+    </div>
+    <div class="qr-brand">💳 Paga con <strong>CUBO</strong></div>
+    <div class="qr-scan" id="tqr-scan">Abre tu app CUBO y escanea el codigo</div>
+    <div class="qr-timer-lbl" id="qr-timer">⏱ 3:00</div>
+    <div class="qr-status" id="tqr-status">ESPERANDO CONFIRMACION...</div>
+    <button class="btn-qr-manual" onclick="qrManualConfirm()" id="tqr-btn">Confirmar pago manualmente</button>
   </div>
 </div>
 

@@ -46,4 +46,8 @@ const CFG = {
   // ── WEBHOOK MAKE.COM ────────────────────────────────────
   makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
 
+  // ── QR CUBO (imágenes del QR que provee CUBO) ────────────────
+  qrBasicImg:   'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q20',   // ← reemplazar con imagen real de CUBO
+  qrPremiumImg: 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q35',  // ← reemplazar con imagen real de CUBO
+
 };
