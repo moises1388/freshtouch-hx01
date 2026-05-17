@@ -54,6 +54,6 @@ const CFG = {
   // ── CONFIRMACIÓN AUTOMÁTICA (opcional) ──────────────────────
   // Webhook Make.com que responde {confirmado:true/false}
   // Si está vacío, usar botón "Confirmar pago manualmente"
-  makeCheckPagoWebhook: '',
+  makeCheckPagoWebhook: 'https://hook.us2.make.com/n7bms3fx266ji0arynexdpehbseq2dfw',
 
 };
