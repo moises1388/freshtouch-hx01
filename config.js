@@ -48,8 +48,8 @@ const CFG = {
 
   // ── LINKS DE PAGO CUBO ──────────────────────────────────────
   // Obtener desde CUBO Admin → Pagos → Links de pago → Crear nuevo link
-  cuboLinkBasic:   '',   // ← Pega aquí el link de pago CUBO para Q20
-  cuboLinkPremium: '',   // ← Pega aquí el link de pago CUBO para Q35
+  cuboLinkBasic:   'https://link.cubopago.com/-PoHhbvGUlA5',   // Q20 Básico
+  cuboLinkPremium: 'https://link.cubopago.com/_YMTXUZm54rI',  // Q35 Premium
 
   // ── CONFIRMACIÓN AUTOMÁTICA (opcional) ──────────────────────
   // Webhook Make.com que responde {confirmado:true/false}
