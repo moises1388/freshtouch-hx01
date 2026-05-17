@@ -46,8 +46,14 @@ const CFG = {
   // ── WEBHOOK MAKE.COM ────────────────────────────────────
   makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
 
-  // ── QR CUBO (imágenes del QR que provee CUBO) ────────────────
-  qrBasicImg:   'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q20',   // ← reemplazar con imagen real de CUBO
-  qrPremiumImg: 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q35',  // ← reemplazar con imagen real de CUBO
+  // ── LINKS DE PAGO CUBO ──────────────────────────────────────
+  // Obtener desde CUBO Admin → Pagos → Links de pago → Crear nuevo link
+  cuboLinkBasic:   '',   // ← Pega aquí el link de pago CUBO para Q20
+  cuboLinkPremium: '',   // ← Pega aquí el link de pago CUBO para Q35
+
+  // ── CONFIRMACIÓN AUTOMÁTICA (opcional) ──────────────────────
+  // Webhook Make.com que responde {confirmado:true/false}
+  // Si está vacío, usar botón "Confirmar pago manualmente"
+  makeCheckPagoWebhook: '',
 
 };

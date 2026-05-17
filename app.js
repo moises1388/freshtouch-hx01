@@ -229,7 +229,8 @@ function toggleLang(){LANG=LANG==='es'?'en':'es';applyLang();if(STATE.role)rende
 let STATE={plan:null,codeType:null,codeInput:'',pinInput:'',role:null,
   admTaps:0,admTimer:null,sessStep:1,sessTO:null,
   vaporCD:null,cycTimer:null,extraTimer:null,doneTimer:null,
-  doorOpen:false};
+  doorOpen:false,
+  qrTxId:null,qrStartTime:0,qrAmt:0};
 
 // DB
 let DB={
@@ -368,8 +369,14 @@ function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
-  const imgUrl=STATE.plan==='basic'?CFG.qrBasicImg:CFG.qrPremiumImg;
-  document.getElementById('qr-img').src=imgUrl;
+  const link=STATE.plan==='basic'?CFG.cuboLinkBasic:CFG.cuboLinkPremium;
+  const qrUrl=link
+    ?'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(link)
+    :'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=CUBO-PENDIENTE-Q'+price;
+  document.getElementById('qr-img').src=qrUrl;
+  STATE.qrTxId=CFG.machineId+'-'+(STATE.plan==='basic'?'B':'P')+'-'+Date.now();
+  STATE.qrStartTime=Date.now();
+  STATE.qrAmt=price;
   startQRTimer();
   go('s-qr');
 }
@@ -378,19 +385,34 @@ function startQRTimer(){
   qrTimerSecs=180;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
-    if(qrTimerSecs<=0){clearInterval(qrTimerInterval);toast(t().tk.qr_exp,'er');go('s-payment');}
+    if(qrTimerSecs<=0){clearInterval(qrTimerInterval);qrTimerInterval=null;toast(t().tk.qr_exp,'er');go('s-payment');return;}
+    if(CFG.makeCheckPagoWebhook&&qrTimerSecs%5===0){
+      fetch(CFG.makeCheckPagoWebhook+'?monto='+STATE.qrAmt+'&maquina='+CFG.machineId+'&desde='+STATE.qrStartTime,
+        {signal:AbortSignal.timeout(4000)})
+        .then(r=>r.json())
+        .then(d=>{if(d&&d.confirmado===true)qrAutoConfirm();})
+        .catch(()=>{});
+    }
   },1000);
 }
 function updateQRTimer(){
   const m=Math.floor(qrTimerSecs/60),s=qrTimerSecs%60;
   document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
 }
-function cancelQR(){clearInterval(qrTimerInterval);go('s-payment');}
+function cancelQR(){clearInterval(qrTimerInterval);qrTimerInterval=null;go('s-payment');}
+function qrAutoConfirm(){
+  if(!qrTimerInterval)return;
+  clearInterval(qrTimerInterval);qrTimerInterval=null;
+  DB.addLog('📱','Pago CUBO Q'+STATE.qrAmt+' — confirmado automaticamente');
+  registrarVenta(STATE.qrAmt,'QR-CUBO');
+  toast(t().tk.qr_ok,'ok');
+  setTimeout(activateSess,600);
+}
 function qrManualConfirm(){
-  clearInterval(qrTimerInterval);
-  const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
-  DB.addLog('📱','Pago QR CUBO Q'+amt);
-  registrarVenta(amt,'QR-CUBO');
+  if(!qrTimerInterval)return;
+  clearInterval(qrTimerInterval);qrTimerInterval=null;
+  DB.addLog('📱','Pago QR CUBO Q'+STATE.qrAmt);
+  registrarVenta(STATE.qrAmt,'QR-CUBO');
   toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
