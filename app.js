@@ -388,7 +388,7 @@ function startQRTimer(){
     if(qrTimerSecs<=0){clearInterval(qrTimerInterval);qrTimerInterval=null;toast(t().tk.qr_exp,'er');go('s-payment');return;}
     if(CFG.makeCheckPagoWebhook&&qrTimerSecs%5===0){
       fetch(CFG.makeCheckPagoWebhook+'?monto='+STATE.qrAmt+'&maquina='+CFG.machineId+'&desde='+STATE.qrStartTime,
-        {signal:AbortSignal.timeout(4000)})
+        {signal:AbortSignal.timeout(7000)})
         .then(r=>r.json())
         .then(d=>{if(d&&d.confirmado===true)qrAutoConfirm();})
         .catch(()=>{});
@@ -404,7 +404,7 @@ function qrAutoConfirm(){
   if(!qrTimerInterval)return;
   clearInterval(qrTimerInterval);qrTimerInterval=null;
   DB.addLog('📱','Pago CUBO Q'+STATE.qrAmt+' — confirmado automaticamente');
-  registrarVenta(STATE.qrAmt,'QR-CUBO');
+  // No llamar registrarVenta: el webhook de CUBO ya lo registró en Make.com
   toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
