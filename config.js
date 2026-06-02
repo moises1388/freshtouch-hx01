@@ -43,11 +43,12 @@ const CFG = {
   infileMode:   'sandbox',    // 'sandbox' | 'production'
   businessName: 'FreshTouch by HYDROX',
 
-  // ── WEBHOOK MAKE.COM ────────────────────────────────────
+  // ── WEBHOOKS MAKE.COM ───────────────────────────────────
   makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
 
-  // ── QR CUBO (imágenes del QR que provee CUBO) ────────────────
-  qrBasicImg:   'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q20',   // ← reemplazar con imagen real de CUBO
-  qrPremiumImg: 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=FreshTouch-CUBO-TEST-Q35',  // ← reemplazar con imagen real de CUBO
+  // ── CUBO PAGOS (via Make.com) ─────────────────────────────
+  makeCuboWebhook: 'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',  // Crea link de pago en Cubo
+  makePollWebhook: 'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',   // Verifica si ya se pagó
 
 };
+
