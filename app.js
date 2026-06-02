@@ -363,31 +363,70 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180;
-function openQR(){
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null;
+async function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
-  const imgUrl=STATE.plan==='basic'?CFG.qrBasicImg:CFG.qrPremiumImg;
-  document.getElementById('qr-img').src=imgUrl;
+  // Mostrar spinner mientras se genera el link
+  document.getElementById('qr-img').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
+  STATE.qrSince=Math.floor(Date.now()/1000);
   startQRTimer();
   go('s-qr');
+  try{
+    const resp=await fetch(CFG.makeCuboWebhook,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({maquina:CFG.machineId,monto:price})
+    });
+    const data=await resp.json();
+    if(data.paymentUrl){
+      const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(data.paymentUrl);
+      document.getElementById('qr-img').src=qrUrl;
+      startQRPoll();
+    } else {
+      toast('Error al generar link de pago','er');
+      stopQR();go('s-payment');
+    }
+  }catch(e){
+    toast('Error de conexión con servidor de pago','er');
+    stopQR();go('s-payment');
+  }
+}
+function startQRPoll(){
+  clearInterval(qrPollInterval);
+  qrPollInterval=setInterval(async()=>{
+    try{
+      const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+      const url=CFG.makePollWebhook+'?maquina='+encodeURIComponent(CFG.machineId)+'&monto='+price+'&desde='+STATE.qrSince;
+      const resp=await fetch(url);
+      const data=await resp.json();
+      if(data.confirmado===true||data.confirmado==='true'||data.confirmado==='confirmado'){
+        stopQR();
+        qrManualConfirm();
+      }
+    }catch(e){/* ignorar errores de polling */}
+  },3000);
+}
+function stopQR(){
+  clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
 }
 function startQRTimer(){
   clearInterval(qrTimerInterval);
   qrTimerSecs=180;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
-    if(qrTimerSecs<=0){clearInterval(qrTimerInterval);toast(t().tk.qr_exp,'er');go('s-payment');}
+    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');}
   },1000);
 }
 function updateQRTimer(){
   const m=Math.floor(qrTimerSecs/60),s=qrTimerSecs%60;
   document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
 }
-function cancelQR(){clearInterval(qrTimerInterval);go('s-payment');}
+function cancelQR(){stopQR();go('s-payment');}
 function qrManualConfirm(){
-  clearInterval(qrTimerInterval);
+  stopQR();
   const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   DB.addLog('📱','Pago QR CUBO Q'+amt);
   registrarVenta(amt,'QR-CUBO');
@@ -855,3 +894,4 @@ function toast(msg,type){
 applyLang();
 if(CFG.suspended)document.getElementById('susp-ov').classList.add('on');
 if('wakeLock' in navigator)navigator.wakeLock.request('screen').catch(()=>{});
+
