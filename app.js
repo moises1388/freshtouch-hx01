@@ -377,6 +377,7 @@ async function openQR(){
     const resp=await fetch(CFG.makeCuboWebhook,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-freshtouch-token':CFG.webhookSecret},
       body:JSON.stringify({maquina:CFG.machineId,monto:price})
     });
     const data=await resp.json();
