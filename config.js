@@ -51,5 +51,9 @@ const CFG = {
   makePollWebhook:  'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',   // Verifica si ya se pagó
   webhookSecret:    'ea0b883de6fb4542a865b23f6fdac59903b4f411405d71c0e94052f6a0cdd247', // Token de autenticación
 
+  // ── FIDELIZACIÓN + TRANSACCIONES (via Make.com) ───────────────
+  makeFidelizacionWebhook: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
+  telegramChatId:          '7494138882',  // Chat ID Telegram admin
+
 };
 
