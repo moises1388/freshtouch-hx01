@@ -364,55 +364,73 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180;
-function openQR(){
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null;
+async function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
-  const link=STATE.plan==='basic'?CFG.cuboLinkBasic:CFG.cuboLinkPremium;
-  const qrUrl=link
-    ?'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(link)
-    :'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=CUBO-PENDIENTE-Q'+price;
-  document.getElementById('qr-img').src=qrUrl;
-  STATE.qrTxId=CFG.machineId+'-'+(STATE.plan==='basic'?'B':'P')+'-'+Date.now();
-  STATE.qrStartTime=Date.now();
-  STATE.qrAmt=price;
+  // Mostrar spinner mientras se genera el link
+  document.getElementById('qr-img').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
+  STATE.qrSince=Math.floor(Date.now()/1000);
   startQRTimer();
   go('s-qr');
+  try{
+    const resp=await fetch(CFG.makeCuboWebhook,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-freshtouch-token':CFG.webhookSecret},
+      body:JSON.stringify({maquina:CFG.machineId,monto:price})
+    });
+    const data=await resp.json();
+    if(data.paymentUrl){
+      const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(data.paymentUrl);
+      document.getElementById('qr-img').src=qrUrl;
+      startQRPoll();
+    } else {
+      toast('Error al generar link de pago','er');
+      stopQR();go('s-payment');
+    }
+  }catch(e){
+    toast('Error de conexión con servidor de pago','er');
+    stopQR();go('s-payment');
+  }
+}
+function startQRPoll(){
+  clearInterval(qrPollInterval);
+  qrPollInterval=setInterval(async()=>{
+    try{
+      const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+      const url=CFG.makePollWebhook+'?maquina='+encodeURIComponent(CFG.machineId)+'&monto='+price+'&desde='+STATE.qrSince;
+      const resp=await fetch(url);
+      const data=await resp.json();
+      if(data.confirmado===true||data.confirmado==='true'||data.confirmado==='confirmado'){
+        stopQR();
+        qrManualConfirm();
+      }
+    }catch(e){/* ignorar errores de polling */}
+  },3000);
+}
+function stopQR(){
+  clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
 }
 function startQRTimer(){
   clearInterval(qrTimerInterval);
   qrTimerSecs=180;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
-    if(qrTimerSecs<=0){clearInterval(qrTimerInterval);qrTimerInterval=null;toast(t().tk.qr_exp,'er');go('s-payment');return;}
-    if(CFG.makeCheckPagoWebhook&&qrTimerSecs%5===0){
-      fetch(CFG.makeCheckPagoWebhook+'?monto='+STATE.qrAmt+'&maquina='+CFG.machineId+'&desde='+STATE.qrStartTime,
-        {signal:AbortSignal.timeout(7000)})
-        .then(r=>r.json())
-        .then(d=>{if(d&&d.confirmado===true)qrAutoConfirm();})
-        .catch(()=>{});
-    }
+    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');}
   },1000);
 }
 function updateQRTimer(){
   const m=Math.floor(qrTimerSecs/60),s=qrTimerSecs%60;
   document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
 }
-function cancelQR(){clearInterval(qrTimerInterval);qrTimerInterval=null;go('s-payment');}
-function qrAutoConfirm(){
-  if(!qrTimerInterval)return;
-  clearInterval(qrTimerInterval);qrTimerInterval=null;
-  DB.addLog('📱','Pago CUBO Q'+STATE.qrAmt+' — confirmado automaticamente');
-  // No llamar registrarVenta: el webhook de CUBO ya lo registró en Make.com
-  toast(t().tk.qr_ok,'ok');
-  setTimeout(activateSess,600);
-}
+function cancelQR(){stopQR();go('s-payment');}
 function qrManualConfirm(){
-  if(!qrTimerInterval)return;
-  clearInterval(qrTimerInterval);qrTimerInterval=null;
-  DB.addLog('📱','Pago QR CUBO Q'+STATE.qrAmt);
-  registrarVenta(STATE.qrAmt,'QR-CUBO');
+  stopQR();
+  const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+  DB.addLog('📱','Pago QR CUBO Q'+amt);
+  registrarVenta(amt,'QR-CUBO');
   toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
