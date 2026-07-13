@@ -43,17 +43,14 @@ const CFG = {
   infileMode:   'sandbox',    // 'sandbox' | 'production'
   businessName: 'FreshTouch by HYDROX',
 
-  // ── WEBHOOK MAKE.COM ────────────────────────────────────
+    // ── WEBHOOKS MAKE.COM ───────────────────────────────────
   makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
 
-  // ── LINKS DE PAGO CUBO ──────────────────────────────────────
-  // Obtener desde CUBO Admin → Pagos → Links de pago → Crear nuevo link
-  cuboLinkBasic:   'https://link.cubopago.com/-PoHhbvGUlA5',   // Q20 Básico
-  cuboLinkPremium: 'https://link.cubopago.com/_YMTXUZm54rI',  // Q35 Premium
+  // ── CUBO PAGOS (via Make.com) ─────────────────────────────
+  makeCuboWebhook:  'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',  // Crea link de pago en Cubo
+  makePollWebhook:  'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',   // Verifica si ya se pagó
+  webhookSecret:    'ea0b883de6fb4542a865b23f6fdac59903b4f411405d71c0e94052f6a0cdd247', // Token de autenticación
 
-  // ── CONFIRMACIÓN AUTOMÁTICA (opcional) ──────────────────────
-  // Webhook Make.com que responde {confirmado:true/false}
-  // Si está vacío, usar botón "Confirmar pago manualmente"
-  makeCheckPagoWebhook: 'https://hook.us2.make.com/n7bms3fx266ji0arynexdpehbseq2dfw',
-
-};
+  // ── FIDELIZACIÓN + TRANSACCIONES (via Make.com) ───────────────
+  makeFidelizacionWebhook: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
+  telegramChatId:          '7494138882',  // Chat ID Telegram admin
