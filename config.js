@@ -43,17 +43,16 @@ const CFG = {
   infileMode:   'sandbox',    // 'sandbox' | 'production'
   businessName: 'FreshTouch by HYDROX',
 
-  // ── WEBHOOKS MAKE.COM ───────────────────────────────────
+ // ── WEBHOOK MAKE.COM ────────────────────────────────────
   makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
 
-  // ── CUBO PAGOS (via Make.com) ─────────────────────────────
-  makeCuboWebhook:  'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',  // Crea link de pago en Cubo
-  makePollWebhook:  'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',   // Verifica si ya se pagó
-  webhookSecret:    'ea0b883de6fb4542a865b23f6fdac59903b4f411405d71c0e94052f6a0cdd247', // Token de autenticación
+  // ── CUBO PAGOS — link dinámico vía Make.com ─────────────────
+  makeCuboWebhook:      'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',
+  makeCheckPagoWebhook: 'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',
 
-  // ── FIDELIZACIÓN + TRANSACCIONES (via Make.com) ───────────────
+  // ── FIDELIZACIÓN + TRANSACCIONES ─────────────────────────────
   makeFidelizacionWebhook: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
-  telegramChatId:          '7494138882',  // Chat ID Telegram admin
+  telegramChatId:          '7494138882',
 
 };
 
