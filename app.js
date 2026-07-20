@@ -229,7 +229,8 @@ function toggleLang(){LANG=LANG==='es'?'en':'es';applyLang();if(STATE.role)rende
 let STATE={plan:null,codeType:null,codeInput:'',pinInput:'',role:null,
   admTaps:0,admTimer:null,sessStep:1,sessTO:null,
   vaporCD:null,cycTimer:null,extraTimer:null,doneTimer:null,
-  doorOpen:false};
+  doorOpen:false,
+  qrTxId:null,qrStartTime:0,qrAmt:0};
 
 // DB
 let DB={
@@ -363,49 +364,61 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180;
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null;
 async function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
+  // Mostrar spinner mientras se genera el link
   document.getElementById('qr-img').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
-  STATE.qrStartTime=Date.now();
-  STATE.qrAmt=price;
+  STATE.qrSince=Math.floor(Date.now()/1000);
   startQRTimer();
   go('s-qr');
   try{
     const resp=await fetch(CFG.makeCuboWebhook,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-freshtouch-token':CFG.webhookSecret},
       body:JSON.stringify({maquina:CFG.machineId,monto:price})
     });
     const data=await resp.json();
     if(data.paymentUrl){
       const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(data.paymentUrl);
       document.getElementById('qr-img').src=qrUrl;
-    }else{
+      startQRPoll();
+    } else {
       toast('Error al generar link de pago','er');
       stopQR();go('s-payment');
     }
   }catch(e){
-    toast('Sin conexión con servidor de pago','er');
+    toast('Error de conexión con servidor de pago','er');
     stopQR();go('s-payment');
   }
 }
-function stopQR(){clearInterval(qrTimerInterval);qrTimerInterval=null;}
+function startQRPoll(){
+  clearInterval(qrPollInterval);
+  qrPollInterval=setInterval(async()=>{
+    try{
+      const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+      const url=CFG.makePollWebhook+'?maquina='+encodeURIComponent(CFG.machineId)+'&monto='+price+'&desde='+STATE.qrSince;
+      const resp=await fetch(url);
+      const data=await resp.json();
+      if(data.confirmado===true||data.confirmado==='true'||data.confirmado==='confirmado'){
+        stopQR();
+        qrManualConfirm();
+      }
+    }catch(e){/* ignorar errores de polling */}
+  },3000);
+}
+function stopQR(){
+  clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
+}
 function startQRTimer(){
   clearInterval(qrTimerInterval);
   qrTimerSecs=180;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
-    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');return;}
-    if(CFG.makeCheckPagoWebhook&&qrTimerSecs%5===0){
-      fetch(CFG.makeCheckPagoWebhook+'?monto='+STATE.qrAmt+'&maquina='+CFG.machineId+'&desde='+STATE.qrStartTime,
-        {signal:AbortSignal.timeout(7000)})
-        .then(r=>r.json())
-        .then(d=>{if(d&&d.confirmado===true)qrAutoConfirm();})
-        .catch(()=>{});
-    }
+    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');}
   },1000);
 }
 function updateQRTimer(){
@@ -413,18 +426,11 @@ function updateQRTimer(){
   document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
 }
 function cancelQR(){stopQR();go('s-payment');}
-function qrAutoConfirm(){
-  if(!qrTimerInterval)return;
-  stopQR();
-  DB.addLog('📱','Pago CUBO Q'+STATE.qrAmt+' — confirmado automaticamente');
-  toast(t().tk.qr_ok,'ok');
-  setTimeout(activateSess,600);
-}
 function qrManualConfirm(){
-  if(!qrTimerInterval)return;
   stopQR();
-  DB.addLog('📱','Pago QR CUBO Q'+STATE.qrAmt);
-  registrarVenta(STATE.qrAmt,'QR-CUBO');
+  const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+  DB.addLog('📱','Pago QR CUBO Q'+amt);
+  registrarVenta(amt,'QR-CUBO');
   toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
@@ -564,9 +570,6 @@ const CYCLES={
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
       onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay(CFG.relayVapor,false);}},
-      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onTick(l){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
       onStart(){relay(CFG.relaySec,true);},
       onTick(l){},
@@ -889,4 +892,3 @@ function toast(msg,type){
 applyLang();
 if(CFG.suspended)document.getElementById('susp-ov').classList.add('on');
 if('wakeLock' in navigator)navigator.wakeLock.request('screen').catch(()=>{});
-
