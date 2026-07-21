@@ -556,8 +556,8 @@ function startVaporCountdown(){
   document.getElementById('sess-inst').textContent='Precalentando vapor...';
   relay(CFG.relayVapor,true);
   relay(CFG.relayUV,true);
-  DB.addLog('💧','Precalentando vapor — 10 segundos');
-  let secs=10;
+  let secs=CFG.durPreheat||15;
+  DB.addLog('💧','Precalentando vapor — '+secs+' segundos');
   document.getElementById('sess-sub').textContent='Iniciando en '+secs+' segundos...';
   clearInterval(STATE.vaporCD);
   STATE.vaporCD=setInterval(()=>{

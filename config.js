@@ -21,6 +21,9 @@ const CFG = {
   durVapBasic:  45,           // Vapor básico     (45s = 0:45)
   durSecBasic:  120,          // Secado básico   (120s = 2:00)
 
+  // ── PRECALENTAMIENTO DE VAPOR (en segundos) ──────────────
+  durPreheat:   15,           // Tiempo de precalentamiento antes del ciclo
+
   // ── TIEMPOS CICLO PREMIUM (en segundos) ──────────────────
   durVapPremium:  75,         // Vapor premium    (75s = 1:15)
   durSecPremium:  240,        // Secado premium  (240s = 4:00)
