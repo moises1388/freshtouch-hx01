@@ -24,6 +24,11 @@ const CFG = {
   // ── PRECALENTAMIENTO DE VAPOR (en segundos) ──────────────
   durPreheat:   15,           // Tiempo de precalentamiento antes del ciclo
 
+  // ── QR / PAGO CUBO ───────────────────────────────────────
+  qrTimeoutSec:      300,     // Duración del QR en pantalla (300s = 5:00)
+  qrPollDelaySec:    60,      // Espera antes de empezar a consultar a Make (el cliente saca el cel y paga)
+  qrPollIntervalSec: 5,       // Cada cuántos segundos se consulta a Make si ya pagó
+
   // ── TIEMPOS CICLO PREMIUM (en segundos) ──────────────────
   durVapPremium:  75,         // Vapor premium    (75s = 1:15)
   durSecPremium:  240,        // Secado premium  (240s = 4:00)

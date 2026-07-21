@@ -232,6 +232,26 @@ let STATE={plan:null,codeType:null,codeInput:'',pinInput:'',role:null,
   doorOpen:false,
   qrTxId:null,qrStartTime:0,qrAmt:0};
 
+// CONFIG PERSISTENTE (panel admin)
+// Lo que se cambia en el panel admin queda guardado en la tablet aunque se recargue.
+// IMPORTANTE: los webhooks y el token de Make NO se guardan aqui (quedan solo en config.js
+// como valores de fabrica) para que nadie los rompa por accidente desde la tablet.
+const CFG_OVERRIDE_KEYS=['machineId','esp32Ip','priceBasic','pricePremium',
+  'pinSA','pinOwner','pinTech','pinTenant','infileMode','suspended',
+  'durPreheat','horaCodigoDiario','qrTimeoutSec','qrPollDelaySec','qrPollIntervalSec'];
+function loadCfgOverrides(){
+  try{
+    const o=JSON.parse(localStorage.getItem('hx_cfg')||'{}');
+    CFG_OVERRIDE_KEYS.forEach(k=>{if(o[k]!==undefined)CFG[k]=o[k];});
+  }catch(e){}
+}
+function saveCfgOverrides(){
+  const o={};
+  CFG_OVERRIDE_KEYS.forEach(k=>{o[k]=CFG[k];});
+  localStorage.setItem('hx_cfg',JSON.stringify(o));
+}
+loadCfgOverrides();
+
 // DB
 let DB={
   load(){
@@ -365,7 +385,7 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null,qrBtnTO=null;
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null,qrPollTO=null,qrBtnTO=null;
 // Boton "Confirmar pago manualmente": oculto, solo aparece como respaldo
 // tras 60s sin confirmacion automatica
 function hideQRManualBtn(){
@@ -409,7 +429,8 @@ async function openQR(){
 }
 function startQRPoll(){
   clearInterval(qrPollInterval);
-  qrPollInterval=setInterval(async()=>{
+  clearTimeout(qrPollTO);
+  const doPoll=async()=>{
     try{
       const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
       const url=CFG.makePollWebhook+'?maquina='+encodeURIComponent(CFG.machineId)+'&monto='+price+'&desde='+STATE.qrSince;
@@ -420,16 +441,23 @@ function startQRPoll(){
         qrManualConfirm();
       }
     }catch(e){/* ignorar errores de polling */}
-  },3000);
+  };
+  // Empieza a consultar recien tras qrPollDelaySec (el cliente saca el cel y paga),
+  // luego consulta cada qrPollIntervalSec segundos.
+  qrPollTO=setTimeout(()=>{
+    doPoll();
+    qrPollInterval=setInterval(doPoll,(CFG.qrPollIntervalSec||5)*1000);
+  },(CFG.qrPollDelaySec||60)*1000);
 }
 function stopQR(){
   clearInterval(qrTimerInterval);
   clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
   hideQRManualBtn();
 }
 function startQRTimer(){
   clearInterval(qrTimerInterval);
-  qrTimerSecs=180;updateQRTimer();
+  qrTimerSecs=CFG.qrTimeoutSec||300;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
     if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');}
@@ -898,6 +926,7 @@ function genCode(){
 }
 function toggleSusp(){
   CFG.suspended=!CFG.suspended;
+  saveCfgOverrides();
   DB.addLog(CFG.suspended?'🔒':'🔓',CFG.suspended?'Maquina suspendida':'Reactivada');
   document.getElementById('susp-ov').classList.toggle('on',CFG.suspended);
   renderAdmin(STATE.role);
@@ -911,6 +940,7 @@ function saveSettings(){
   CFG.pinTenant=document.getElementById('c-tenant').value.trim()||CFG.pinTenant;
   CFG.pinOwner=document.getElementById('c-owner').value.trim()||CFG.pinOwner;
   CFG.infileMode=document.getElementById('c-infile').value;
+  saveCfgOverrides();
   toast(t().tk.cfg,'ok');DB.addLog('⚙️','Configuracion actualizada');renderAdmin(STATE.role);
 }
 function testCycle(){
