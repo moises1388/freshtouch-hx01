@@ -364,7 +364,17 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null;
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null,qrBtnTO=null;
+// Boton "Confirmar pago manualmente": oculto, solo aparece como respaldo
+// tras 60s sin confirmacion automatica
+function hideQRManualBtn(){
+  clearTimeout(qrBtnTO);qrBtnTO=null;
+  document.getElementById('tqr-btn').style.display='none';
+}
+function armQRManualBtn(){
+  clearTimeout(qrBtnTO);
+  qrBtnTO=setTimeout(()=>{document.getElementById('tqr-btn').style.display='';},60000);
+}
 async function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
@@ -372,6 +382,7 @@ async function openQR(){
   // Mostrar spinner mientras se genera el link
   document.getElementById('qr-img').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
   STATE.qrSince=Math.floor(Date.now()/1000);
+  hideQRManualBtn();
   startQRTimer();
   go('s-qr');
   try{
@@ -385,6 +396,7 @@ async function openQR(){
       const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(data.paymentUrl);
       document.getElementById('qr-img').src=qrUrl;
       startQRPoll();
+      armQRManualBtn();
     } else {
       toast('Error al generar link de pago','er');
       stopQR();go('s-payment');
@@ -412,6 +424,7 @@ function startQRPoll(){
 function stopQR(){
   clearInterval(qrTimerInterval);
   clearInterval(qrPollInterval);
+  hideQRManualBtn();
 }
 function startQRTimer(){
   clearInterval(qrTimerInterval);
