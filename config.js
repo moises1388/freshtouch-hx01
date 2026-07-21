@@ -47,7 +47,8 @@ const CFG = {
   businessName: 'FreshTouch by HYDROX',
 
     // ── WEBHOOKS MAKE.COM ───────────────────────────────────
-  makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
+  // Ventas + codigos de caja: escenario "FreshTouch - Clientes + Transacciones + Telegram"
+  makeVentasWebhook: "https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw",
 
   // ── CUBO PAGOS (via Make.com) ─────────────────────────────
   makeCuboWebhook:  'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',  // Crea link de pago en Cubo
@@ -57,5 +58,11 @@ const CFG = {
     // ── FIDELIZACIÓN + TRANSACCIONES (via Make.com) ───────────────
   makeFidelizacionWebhook: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
   telegramChatId:          '7494138882',  // Chat ID Telegram admin
+
+  // ── CÓDIGO DE CAJA ROTATIVO ──────────────────────────────
+  // Un solo código activo (válido para Q20 y Q35). Se genera uno nuevo
+  // cada día a la hora indicada y cada vez que se usa el anterior.
+  // El código se envía por Telegram vía Make.
+  horaCodigoDiario: 8,        // Hora del día (0-23) para generar el código diario
 
 };
