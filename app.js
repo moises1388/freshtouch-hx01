@@ -458,8 +458,10 @@ async function registrarVenta(monto, metodoPago, codigoUsado = "") {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        maquina_id: CFG.machineId,
+        action: "registrar_venta",
+        maquina: CFG.machineId,
         monto: monto,
+        plan: STATE.plan,
         metodo_pago: metodoPago,
         codigo_usado: codigoUsado,
         timestamp: new Date().toISOString()
