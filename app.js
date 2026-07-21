@@ -229,7 +229,28 @@ function toggleLang(){LANG=LANG==='es'?'en':'es';applyLang();if(STATE.role)rende
 let STATE={plan:null,codeType:null,codeInput:'',pinInput:'',role:null,
   admTaps:0,admTimer:null,sessStep:1,sessTO:null,
   vaporCD:null,cycTimer:null,extraTimer:null,doneTimer:null,
-  doorOpen:false};
+  doorOpen:false,
+  qrTxId:null,qrStartTime:0,qrAmt:0};
+
+// CONFIG PERSISTENTE (panel admin)
+// Lo que se cambia en el panel admin queda guardado en la tablet aunque se recargue.
+// IMPORTANTE: los webhooks y el token de Make NO se guardan aqui (quedan solo en config.js
+// como valores de fabrica) para que nadie los rompa por accidente desde la tablet.
+const CFG_OVERRIDE_KEYS=['machineId','esp32Ip','priceBasic','pricePremium',
+  'pinSA','pinOwner','pinTech','pinTenant','infileMode','suspended',
+  'durPreheat','horaCodigoDiario','qrTimeoutSec','qrPollDelaySec','qrPollIntervalSec'];
+function loadCfgOverrides(){
+  try{
+    const o=JSON.parse(localStorage.getItem('hx_cfg')||'{}');
+    CFG_OVERRIDE_KEYS.forEach(k=>{if(o[k]!==undefined)CFG[k]=o[k];});
+  }catch(e){}
+}
+function saveCfgOverrides(){
+  const o={};
+  CFG_OVERRIDE_KEYS.forEach(k=>{o[k]=CFG[k];});
+  localStorage.setItem('hx_cfg',JSON.stringify(o));
+}
+loadCfgOverrides();
 
 // DB
 let DB={
@@ -237,13 +258,14 @@ let DB={
     try{const d=JSON.parse(localStorage.getItem('hx_db')||'{}');
       this.codes=d.codes||[];this.log=d.log||[];
       this.stats=d.stats||{total:0,today:0,revTotal:0,revToday:0,lastDay:''};
-      this.contacts=d.contacts||[];
+      this.contacts=d.contacts||[];this.meta=d.meta||{lastCashDay:''};
     }catch{this.codes=[];this.log=[];
-      this.stats={total:0,today:0,revTotal:0,revToday:0,lastDay:''};this.contacts=[];}
+      this.stats={total:0,today:0,revTotal:0,revToday:0,lastDay:''};this.contacts=[];
+      this.meta={lastCashDay:''};}
     const td=new Date().toLocaleDateString('es-GT');
     if(this.stats.lastDay!==td){this.stats.today=0;this.stats.revToday=0;this.stats.lastDay=td;this.save();}
   },
-  save(){localStorage.setItem('hx_db',JSON.stringify({codes:this.codes,log:this.log,stats:this.stats,contacts:this.contacts}));},
+  save(){localStorage.setItem('hx_db',JSON.stringify({codes:this.codes,log:this.log,stats:this.stats,contacts:this.contacts,meta:this.meta}));},
   addLog(ic,msg){const t=new Date().toLocaleTimeString('es-GT',{hour:'2-digit',minute:'2-digit'});this.log.unshift({t,ic,msg});if(this.log.length>120)this.log.pop();this.save();},
   record(plan,amt){this.stats.total++;this.stats.today++;this.stats.revTotal+=amt;this.stats.revToday+=amt;this.addLog('⛑️','Ciclo '+plan+' Q'+amt);this.save();},
   genCode(type,plan){const ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c=(type==='cash'?'CJ-':'PR-');for(let i=0;i<4;i++)c+=ch[Math.floor(Math.random()*ch.length)];this.codes.push({code:c,type,plan,used:false,created:new Date().toLocaleString('es-GT')});this.save();return c;},
@@ -363,49 +385,82 @@ function selectPlan(plan){
 }
 
 // QR CUBO
-let qrTimerInterval=null,qrTimerSecs=180;
+let qrTimerInterval=null,qrTimerSecs=180,qrPollInterval=null,qrPollTO=null,qrBtnTO=null;
+// Boton "Confirmar pago manualmente": oculto, solo aparece como respaldo
+// tras 60s sin confirmacion automatica
+function hideQRManualBtn(){
+  clearTimeout(qrBtnTO);qrBtnTO=null;
+  document.getElementById('tqr-btn').style.display='none';
+}
+function armQRManualBtn(){
+  clearTimeout(qrBtnTO);
+  qrBtnTO=setTimeout(()=>{document.getElementById('tqr-btn').style.display='';},60000);
+}
 async function openQR(){
   const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
   document.getElementById('qr-amt-lbl').textContent='Q'+price+'.00';
   document.getElementById('qr-amt-big').textContent='Q'+price+'.00';
+  // Mostrar spinner mientras se genera el link
   document.getElementById('qr-img').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
-  STATE.qrStartTime=Date.now();
-  STATE.qrAmt=price;
+  STATE.qrSince=Math.floor(Date.now()/1000);
+  hideQRManualBtn();
   startQRTimer();
   go('s-qr');
   try{
     const resp=await fetch(CFG.makeCuboWebhook,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-freshtouch-token':CFG.webhookSecret},
       body:JSON.stringify({maquina:CFG.machineId,monto:price})
     });
     const data=await resp.json();
     if(data.paymentUrl){
       const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(data.paymentUrl);
       document.getElementById('qr-img').src=qrUrl;
-    }else{
+      startQRPoll();
+      armQRManualBtn();
+    } else {
       toast('Error al generar link de pago','er');
       stopQR();go('s-payment');
     }
   }catch(e){
-    toast('Sin conexión con servidor de pago','er');
+    toast('Error de conexión con servidor de pago','er');
     stopQR();go('s-payment');
   }
 }
-function stopQR(){clearInterval(qrTimerInterval);qrTimerInterval=null;}
+function startQRPoll(){
+  clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
+  const doPoll=async()=>{
+    try{
+      const price=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+      const url=CFG.makePollWebhook+'?maquina='+encodeURIComponent(CFG.machineId)+'&monto='+price+'&desde='+STATE.qrSince;
+      const resp=await fetch(url);
+      const data=await resp.json();
+      if(data.confirmado===true||data.confirmado==='true'||data.confirmado==='confirmado'){
+        stopQR();
+        qrManualConfirm();
+      }
+    }catch(e){/* ignorar errores de polling */}
+  };
+  // Empieza a consultar recien tras qrPollDelaySec (el cliente saca el cel y paga),
+  // luego consulta cada qrPollIntervalSec segundos.
+  qrPollTO=setTimeout(()=>{
+    doPoll();
+    qrPollInterval=setInterval(doPoll,(CFG.qrPollIntervalSec||5)*1000);
+  },(CFG.qrPollDelaySec||60)*1000);
+}
+function stopQR(){
+  clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
+  hideQRManualBtn();
+}
 function startQRTimer(){
   clearInterval(qrTimerInterval);
-  qrTimerSecs=180;updateQRTimer();
+  qrTimerSecs=CFG.qrTimeoutSec||300;updateQRTimer();
   qrTimerInterval=setInterval(()=>{
     qrTimerSecs--;updateQRTimer();
-    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');return;}
-    if(CFG.makeCheckPagoWebhook&&qrTimerSecs%5===0){
-      fetch(CFG.makeCheckPagoWebhook+'?monto='+STATE.qrAmt+'&maquina='+CFG.machineId+'&desde='+STATE.qrStartTime,
-        {signal:AbortSignal.timeout(7000)})
-        .then(r=>r.json())
-        .then(d=>{if(d&&d.confirmado===true)qrAutoConfirm();})
-        .catch(()=>{});
-    }
+    if(qrTimerSecs<=0){stopQR();toast(t().tk.qr_exp,'er');go('s-payment');}
   },1000);
 }
 function updateQRTimer(){
@@ -413,18 +468,11 @@ function updateQRTimer(){
   document.getElementById('qr-timer').textContent='⏱ '+m+':'+(s<10?'0':'')+s;
 }
 function cancelQR(){stopQR();go('s-payment');}
-function qrAutoConfirm(){
-  if(!qrTimerInterval)return;
-  stopQR();
-  DB.addLog('📱','Pago CUBO Q'+STATE.qrAmt+' — confirmado automaticamente');
-  toast(t().tk.qr_ok,'ok');
-  setTimeout(activateSess,600);
-}
 function qrManualConfirm(){
-  if(!qrTimerInterval)return;
   stopQR();
-  DB.addLog('📱','Pago QR CUBO Q'+STATE.qrAmt);
-  registrarVenta(STATE.qrAmt,'QR-CUBO');
+  const amt=STATE.plan==='basic'?CFG.priceBasic:CFG.pricePremium;
+  DB.addLog('📱','Pago QR CUBO Q'+amt);
+  registrarVenta(amt,'QR-CUBO');
   toast(t().tk.qr_ok,'ok');
   setTimeout(activateSess,600);
 }
@@ -438,8 +486,10 @@ async function registrarVenta(monto, metodoPago, codigoUsado = "") {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        maquina_id: CFG.machineId,
+        action: "registrar_venta",
+        maquina: CFG.machineId,
         monto: monto,
+        plan: STATE.plan,
         metodo_pago: metodoPago,
         codigo_usado: codigoUsado,
         timestamp: new Date().toISOString()
@@ -449,6 +499,37 @@ async function registrarVenta(monto, metodoPago, codigoUsado = "") {
     console.warn("Webhook de venta falló (no crítico):", e);
   }
 }
+
+// CODIGO DE CAJA ROTATIVO
+// Un solo codigo activo valido para ambos planes. Rota al usarse y
+// se genera uno nuevo cada dia (horaCodigoDiario). Se avisa por Telegram via Make.
+function rotateCashCode(motivo){
+  DB.codes.forEach(c=>{if(c.type==='cash'&&!c.used)c.used=true;});
+  const code=DB.genCode('cash',null);
+  DB.addLog('🎫','Nuevo codigo caja: '+code+' ('+motivo+')');
+  notificarCodigoCaja(code,motivo);
+  if(STATE.role)renderAdmin(STATE.role);
+  return code;
+}
+async function notificarCodigoCaja(codigo,motivo){
+  try{
+    await fetch(CFG.makeVentasWebhook,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'codigo_caja',maquina:CFG.machineId,codigo:codigo,motivo:motivo})
+    });
+  }catch(e){console.warn('No se pudo enviar el codigo por Telegram:',e);}
+}
+function checkDailyCashCode(){
+  const now=new Date();
+  const today=now.toLocaleDateString('es-GT');
+  if(now.getHours()>=(CFG.horaCodigoDiario??8)&&DB.meta.lastCashDay!==today){
+    DB.meta.lastCashDay=today;DB.save();
+    rotateCashCode('diario');
+  }
+}
+setInterval(checkDailyCashCode,60000);
+checkDailyCashCode();
 
 function kp(key){
   if(key==='DEL'){STATE.codeInput=STATE.codeInput.slice(0,-1);}
@@ -478,7 +559,10 @@ function validateCode(){
     if(found.plan)STATE.plan=found.plan;
     DB.addLog('🎫','Codigo '+found.type+': '+STATE.codeInput);
     const _precio=( (found.plan||STATE.plan)==='basic'?CFG.priceBasic:CFG.pricePremium );
-    if(found.type==='cash') registrarVenta(_precio, "cash", STATE.codeInput);
+    if(found.type==='cash'){
+      registrarVenta(_precio, "cash", STATE.codeInput);
+      rotateCashCode('usado');
+    }
     else registrarVenta(0, "promo", STATE.codeInput);
     toast(t().tk.code_ok,'ok');
     setTimeout(activateSess,700);
@@ -537,8 +621,8 @@ function startVaporCountdown(){
   document.getElementById('sess-inst').textContent='Precalentando vapor...';
   relay(CFG.relayVapor,true);
   relay(CFG.relayUV,true);
-  DB.addLog('💧','Precalentando vapor — 10 segundos');
-  let secs=10;
+  let secs=CFG.durPreheat||15;
+  DB.addLog('💧','Precalentando vapor — '+secs+' segundos');
   document.getElementById('sess-sub').textContent='Iniciando en '+secs+' segundos...';
   clearInterval(STATE.vaporCD);
   STATE.vaporCD=setInterval(()=>{
@@ -564,9 +648,6 @@ const CYCLES={
     {nm:'cyc_v',ico:'💧',lbl:'p1b',dur:CFG.durVapBasic,ph:0,
       onStart(){relay(CFG.relayVapor,true);relay(CFG.relayPuerta,false);STATE.doorOpen=false;playSound('inicio');},
       onTick(l){},onEnd(){relay(CFG.relayVapor,false);}},
-      onStart(){relay('vapor',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onStart(){relay('vapor',true);relay('luzuv',true);relay('puerta',false);STATE.doorOpen=false;playSound('inicio');},
-      onTick(l){},onEnd(){relay('vapor',false);}},
     {nm:'cyc_d',ico:'💨',lbl:'p2b',dur:CFG.durSecBasic,ph:1,
       onStart(){relay(CFG.relaySec,true);},
       onTick(l){},
@@ -777,7 +858,7 @@ function renderAdmin(role){
     const cl=DB.codes.slice().reverse().slice(0,10).map(c=>
       '<div class="code-i"><span class="code-v">'+c.code+'</span>'
       +'<span class="code-tp '+(c.type==='cash'?'ca':'pr')+'">'+(c.type==='cash'?l.gen_cash.split(' ')[0]:l.gen_promo)+'</span>'
-      +'<span style="font-size:10px;color:rgba(255,255,255,.3)">'+c.plan+'</span>'
+      +'<span style="font-size:10px;color:rgba(255,255,255,.3)">'+(c.plan||'20/35')+'</span>'
       +(c.used?'<span style="font-size:10px;color:var(--red)">'+l.used+'</span>':'<span style="font-size:10px;color:var(--green)">'+l.active+'</span>')
       +'</div>').join('');
     h+='<div class="asec"><div class="asec-t">'+l.codes_title+'</div>'
@@ -845,6 +926,7 @@ function genCode(){
 }
 function toggleSusp(){
   CFG.suspended=!CFG.suspended;
+  saveCfgOverrides();
   DB.addLog(CFG.suspended?'🔒':'🔓',CFG.suspended?'Maquina suspendida':'Reactivada');
   document.getElementById('susp-ov').classList.toggle('on',CFG.suspended);
   renderAdmin(STATE.role);
@@ -858,6 +940,7 @@ function saveSettings(){
   CFG.pinTenant=document.getElementById('c-tenant').value.trim()||CFG.pinTenant;
   CFG.pinOwner=document.getElementById('c-owner').value.trim()||CFG.pinOwner;
   CFG.infileMode=document.getElementById('c-infile').value;
+  saveCfgOverrides();
   toast(t().tk.cfg,'ok');DB.addLog('⚙️','Configuracion actualizada');renderAdmin(STATE.role);
 }
 function testCycle(){
@@ -889,4 +972,3 @@ function toast(msg,type){
 applyLang();
 if(CFG.suspended)document.getElementById('susp-ov').classList.add('on');
 if('wakeLock' in navigator)navigator.wakeLock.request('screen').catch(()=>{});
-

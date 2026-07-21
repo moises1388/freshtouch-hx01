@@ -21,6 +21,14 @@ const CFG = {
   durVapBasic:  45,           // Vapor básico     (45s = 0:45)
   durSecBasic:  120,          // Secado básico   (120s = 2:00)
 
+  // ── PRECALENTAMIENTO DE VAPOR (en segundos) ──────────────
+  durPreheat:   15,           // Tiempo de precalentamiento antes del ciclo
+
+  // ── QR / PAGO CUBO ───────────────────────────────────────
+  qrTimeoutSec:      300,     // Duración del QR en pantalla (300s = 5:00)
+  qrPollDelaySec:    60,      // Espera antes de empezar a consultar a Make (el cliente saca el cel y paga)
+  qrPollIntervalSec: 5,       // Cada cuántos segundos se consulta a Make si ya pagó
+
   // ── TIEMPOS CICLO PREMIUM (en segundos) ──────────────────
   durVapPremium:  75,         // Vapor premium    (75s = 1:15)
   durSecPremium:  240,        // Secado premium  (240s = 4:00)
@@ -43,16 +51,23 @@ const CFG = {
   infileMode:   'sandbox',    // 'sandbox' | 'production'
   businessName: 'FreshTouch by HYDROX',
 
- // ── WEBHOOK MAKE.COM ────────────────────────────────────
-  makeVentasWebhook: "https://hook.us2.make.com/cotj9zeggoe076da83nlmy3896mm6o1s",
+    // ── WEBHOOKS MAKE.COM ───────────────────────────────────
+  // Ventas + codigos de caja: escenario "FreshTouch - Clientes + Transacciones + Telegram"
+  makeVentasWebhook: "https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw",
 
-  // ── CUBO PAGOS — link dinámico vía Make.com ─────────────────
-  makeCuboWebhook:      'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',
-  makeCheckPagoWebhook: 'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',
+  // ── CUBO PAGOS (via Make.com) ─────────────────────────────
+  makeCuboWebhook:  'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',  // Crea link de pago en Cubo
+  makePollWebhook:  'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',   // Verifica si ya se pagó
+  webhookSecret:    'ea0b883de6fb4542a865b23f6fdac59903b4f411405d71c0e94052f6a0cdd247', // Token de autenticación
 
-  // ── FIDELIZACIÓN + TRANSACCIONES ─────────────────────────────
+    // ── FIDELIZACIÓN + TRANSACCIONES (via Make.com) ───────────────
   makeFidelizacionWebhook: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
-  telegramChatId:          '7494138882',
+  telegramChatId:          '7494138882',  // Chat ID Telegram admin
+
+  // ── CÓDIGO DE CAJA ROTATIVO ──────────────────────────────
+  // Un solo código activo (válido para Q20 y Q35). Se genera uno nuevo
+  // cada día a la hora indicada y cada vez que se usa el anterior.
+  // El código se envía por Telegram vía Make.
+  horaCodigoDiario: 8,        // Hora del día (0-23) para generar el código diario
 
 };
-
