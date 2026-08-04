@@ -2,6 +2,9 @@
 
 Regla: FreshTouch nunca escribe primero a un desconocido. El dueño manda estos mensajes a mano, uno por uno, desde su WhatsApp/correo personal o del negocio.
 
+**Hoja de seguimiento (fuente viva, ir marcando Estado y Fecha de contacto):**
+https://docs.google.com/spreadsheets/d/1SBzcGsbtPTFtJ4HsEm0xy_fJBI7LOQIdJTPi28Nh5Fs/edit
+
 ## Mensaje base (WhatsApp)
 
 Hola [NOMBRE NEGOCIO], buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para tiendas como la suya, ya sea como servicio adicional para sus clientes o para higienizar los cascos en exhibición/usados antes de venderlos.
@@ -62,5 +65,40 @@ Saludos.
 Hola equipo de Minimotors, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para tiendas como la suya, ya sea como servicio adicional para sus clientes o para higienizar los cascos en exhibición/usados antes de venderlos.
 
 Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su local de Majadas Once. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
+
+Saludos.
+
+### 6. ECW Multicomer (motorepuestos) — WhatsApp +502 5838 0869
+Hola equipo de ECW Multicomer, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para negocios de motorepuestos como el suyo, para ofrecerla como servicio adicional a sus clientes cuando pasan por repuestos.
+
+Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su local de Zona 7. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
+
+Saludos.
+
+### 7. Motorepuestos Acquaroni — Tel +502 2218 6100
+Hola equipo de Acquaroni, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para negocios de motorepuestos como el suyo, para ofrecerla como servicio adicional a sus clientes.
+
+Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su local de Zona 4 Mixco. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
+
+Saludos.
+
+### 8. Hipertienda de Motos — Tel +502 2234 8391 / correo info@hipertienda.com
+Hola equipo de Hipertienda de Motos, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para agencias como la suya, ya sea como servicio adicional para sus clientes o para higienizar cascos en exhibición/usados antes de venderlos.
+
+Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su tienda. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
+
+Saludos.
+
+### 9. MOAUTO (Motos y Autos S.A.) — WhatsApp +502 3048 4910
+Hola equipo de MOAUTO, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para negocios de repuestos y accesorios como el suyo, para ofrecerla como servicio adicional a sus clientes.
+
+Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su local de Zona 9. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
+
+Saludos.
+
+### 10. Honda Motos Guatemala (Central Zona 4) — Tel +502 2225 6250 / correo info.motos@honda.com.gt
+Hola equipo de Honda Motos Guatemala, buen día 👋 Le escribe el equipo de FreshTouch by HYDROX. Tenemos una máquina que desinfecta cascos de moto con vapor + luz UV en un par de minutos — pensada para agencias como la suya, ya sea como servicio adicional para sus clientes o para higienizar cascos en exhibición/usados antes de venderlos.
+
+Nos encantaría platicarles 5 minutos sobre cómo podríamos colocar una máquina en su agencia de Zona 4. ¿Tienen un momento esta semana para una llamada rápida o para pasar a mostrarles cómo funciona?
 
 Saludos.

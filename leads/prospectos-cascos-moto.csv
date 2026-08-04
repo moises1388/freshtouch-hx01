@@ -1,6 +1,11 @@
-Negocio,Telefono,WhatsApp,Email,Direccion,Fuente,Estado,Fecha contacto,Notas
-Todomoto (Zona 9),+502 2234 8066,+502 2234 8066,,"7a Av 3-68 zona 9, Edificio 74, frente a SAT, Cdad. de Guatemala",https://todomoto.com.gt/,Pendiente,,
-Todomoto (Zona 1),+502 2220 2727,+502 2220 2727,,"Av. Bolívar 24-69 zona 1, Cdad. de Guatemala",https://todomoto.com.gt/,Pendiente,,
-Kemik Guatemala,+502 2300 5678,+502 2300 5678,,"7a Av 2-21 zona 4, local 01, Campus TEC IV, Cdad. de Guatemala",https://www.kemik.gt/contacto,Pendiente,,
-MotoFast GT,+502 2314 3280,+502 5518 3938 / +502 4469 8463,contacto@motofastgt.com,"Av. Hincapié 5-71 zona 13, Cdad. de Guatemala",https://motofastgt.com/contacto/,Pendiente,,
-Minimotors Guatemala (Majadas Once),+502 3003 0642,+502 3003 0642,,"27 Av. 6-40, Local 115, Majadas Once, Cdad. de Guatemala",https://minimotors-ca.com/,Pendiente,,
+Negocio,Categoria,Telefono,WhatsApp,Email,Direccion,Fuente,Estado,Fecha contacto,Notas
+Todomoto (Zona 9),Tienda de cascos,+502 2234 8066,+502 2234 8066,,"7a Av 3-68 zona 9, Edificio 74, frente a SAT, Cdad. de Guatemala",https://todomoto.com.gt/,Pendiente,,
+Todomoto (Zona 1),Tienda de cascos,+502 2220 2727,+502 2220 2727,,"Av. Bolívar 24-69 zona 1, Cdad. de Guatemala",https://todomoto.com.gt/,Pendiente,,
+Kemik Guatemala,Tienda de cascos,+502 2300 5678,+502 2300 5678,,"7a Av 2-21 zona 4, local 01, Campus TEC IV, Cdad. de Guatemala",https://www.kemik.gt/contacto,Pendiente,,
+MotoFast GT,Tienda de cascos,+502 2314 3280,+502 5518 3938 / +502 4469 8463,contacto@motofastgt.com,"Av. Hincapié 5-71 zona 13, Cdad. de Guatemala",https://motofastgt.com/contacto/,Pendiente,,
+Minimotors Guatemala (Majadas Once),Tienda de cascos,+502 3003 0642,+502 3003 0642,,"27 Av. 6-40, Local 115, Majadas Once, Cdad. de Guatemala",https://minimotors-ca.com/,Pendiente,,
+ECW Multicomer,Motorepuestos,+502 2313 2910,+502 5838 0869,,"1ra calle 32-87 zona 7, Colonia Toledo Roosevelt, Bodega 08, Cdad. de Guatemala",https://ecwmulticomer.com/,Pendiente,,
+Motorepuestos Acquaroni,Motorepuestos,+502 2218 6100,,,"17 calle 14-99, Complejo Industrial Distribodegas 4, bodega 24, zona 4 de Mixco",https://www.motorepuestosacquaroni.com/,Pendiente,,
+Hipertienda de Motos,Motorepuestos / Concesionario,+502 2234 8391,,info@hipertienda.com,"6a Avenida 3-51, Cdad. de Guatemala 01009",https://hipertiendademotos.com/contacto/,Pendiente,,
+MOAUTO (Motos y Autos S.A.),Motorepuestos,+502 2381 5454,+502 3048 4910,,"4ta Calle 5-36 zona 9, Cdad. de Guatemala",https://www.moauto.com.gt/contactenos,Pendiente,,
+Honda Motos Guatemala (Central Zona 4),Concesionario,+502 2225 6250,,info.motos@honda.com.gt,"Via 8 5-34 zona 4, Cdad. de Guatemala",https://motos.honda.com.gt/en/agencias,Pendiente,,
