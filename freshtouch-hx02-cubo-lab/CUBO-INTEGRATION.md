@@ -91,6 +91,59 @@ recording the raw event payloads, is what would close these out. Until
 then `src/cubo/webSdkCuboAdapter.js` keeps its payload-shape assumptions
 clearly flagged as assumptions, not facts.
 
+Re-checked directly (this session): `WebFetch` and a raw `curl` through
+this environment's egress proxy both still get a policy-level `403` on
+`developers.cubopago.com` and `www.cubopago.com` — confirmed again across
+three different proxy ports as the session reconnected, so it's the
+network policy, not a transient failure. A search of the npm registry
+(`registry.npmjs.org`, which this environment *can* reach directly) for
+plausible package names (`cubo-web-sdk`, `cubopago`, `@cubopago/web-sdk`,
+`cubo-sdk-web`, `cubo-pos-sdk`) found nothing — weak supporting evidence
+(not proof) that the SDK is distributed only as a hosted `<script>` tag
+from Cubo's own domain, not an npm package. Nothing here was guessed into
+the CONFIRMED section above because of this.
+
+## How to activate `mode: real` (once Cubo's answer arrives)
+
+Everything except the actual script URL and the exact
+`transactionResult`/`error`/`status` payload shapes is already wired and
+waiting. `lab/lab.js`'s "Real Cubo Web SDK" radio option already routes
+through `PaymentProvider` → `CuboCardProvider` → `createWebSdkCuboAdapter`
+unchanged; it currently shows *"Cubo Web SDK script not loaded yet"* and
+keeps CONNECT POS disabled until `window.CuboSDK` exists on the page —
+that's expected, not a bug, and needs no code change to fix once the
+script is real. When the sandbox API key and SDK details come in:
+
+1. **Script tag** — replace the commented-out placeholder at the top of
+   `lab/lab.html` (search for `PENDING_OFFICIAL_CUBO_WEB_SDK_URL`) with the
+   real `<script src="...">` tag. Uncomment it.
+2. **Global / init call** — open `src/cubo/webSdkCuboAdapter.js` and fix
+   the two spots explicitly marked `WHICH IS A GUESS` in its header
+   comment and in `new window.CuboSDK({ apiKey, environment })`: the
+   actual global name (if not `window.CuboSDK`) and the actual constructor
+   signature.
+3. **Event/status payload shapes** — once a real `connect()` and
+   `startPayment()` have been run against sandbox (even once, logged
+   manually), update the UNVERIFIED section above to CONFIRMED, and fix
+   the field names `webSdkCuboAdapter.js` currently assumes
+   (`transactionId`, `referenceId`, `authorizationCode`, `readType`) to
+   match reality. `mockCuboAdapter.js` should keep using the same field
+   names afterward, so the lab UI doesn't need to change to read either
+   adapter.
+4. **API key** — type it into the lab's "API Key" field at runtime (never
+   committed), or put it in `machines/HX02/secrets.local.json` (gitignored,
+   copy from `secrets.example.json`). Either way it never goes in
+   `machine.config.json` or into a commit.
+5. **First real test is `connect()` only** — select "Real Cubo Web SDK"
+   mode, connect the POS, confirm `CONNECTED` on screen. No `startPayment()`
+   yet. Only after that works, and only in `sandbox`, try a real
+   `startPayment()` — still no ESP32 involved (see `requestCycleStart()`,
+   still `Esp32NotImplementedError` by design).
+
+None of steps 1–3 should be done with placeholder/guessed values "to see
+if it works" — that's exactly the kind of invented data this lab has
+deliberately avoided so far.
+
 ## HTTPS / localhost
 
 The brief asked to investigate how FreshTouch HX02 is currently served.

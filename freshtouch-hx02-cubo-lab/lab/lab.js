@@ -61,7 +61,8 @@ function resetResultPanel() {
 
 function renderButtons() {
   const state = provider ? provider.getStatus() : STATES.IDLE;
-  el('pay-btn').disabled = state !== STATES.POS_CONNECTED;
+  el('pay-btn').disabled = !provider || state !== STATES.POS_CONNECTED;
+  el('disconnect-btn').disabled = !provider;
 }
 
 // This is the one place that decides, on screen, whether the payment that
@@ -137,11 +138,21 @@ function handleProviderEvent(snapshot) {
   renderButtons();
 }
 
+// createPaymentProvider({mode:'web-sdk', ...}) throws synchronously when
+// window.CuboSDK isn't present (see webSdkCuboAdapter.js) — expected and
+// correct until the real script is loaded. Catch it here so switching to
+// "Real Cubo Web SDK" mode leaves the lab in a clear "not ready yet" state
+// instead of crashing mid-reset.
 function buildProvider() {
   const mode = currentMode();
   const apiKey = el('api-key-input').value.trim();
-  provider = createPaymentProvider({ type: 'card', mode, machineConfig, apiKey: apiKey || undefined });
-  provider.onResult(handleProviderEvent);
+  try {
+    provider = createPaymentProvider({ type: 'card', mode, machineConfig, apiKey: apiKey || undefined });
+    provider.onResult(handleProviderEvent);
+  } catch (err) {
+    provider = null;
+    log(MACHINE_ID, 'Payment provider not ready', { reason: err.message });
+  }
 }
 
 function resetLab() {
@@ -157,6 +168,10 @@ function resetLab() {
 }
 
 function selectService(name) {
+  if (!provider) {
+    log(MACHINE_ID, 'Cannot select service: payment provider is not ready (see SDK status above)');
+    return;
+  }
   selectedServiceName = name;
   const service = machineConfig.services[name];
   document.querySelectorAll('.service-btn').forEach((btn) => {
@@ -170,6 +185,10 @@ function selectService(name) {
 }
 
 async function connectPos() {
+  if (!provider) {
+    log(MACHINE_ID, 'Payment provider is not ready (see SDK status above)');
+    return;
+  }
   if (!selectedServiceName) {
     log(MACHINE_ID, 'Select a service before connecting the POS');
     return;
@@ -182,6 +201,7 @@ async function connectPos() {
 }
 
 async function disconnectPos() {
+  if (!provider) return;
   try {
     await provider.disconnectPos();
   } catch (err) {
@@ -190,7 +210,7 @@ async function disconnectPos() {
 }
 
 async function testPayment() {
-  if (!selectedServiceName) return;
+  if (!provider || !selectedServiceName) return;
   // Refresh the service with whatever mock outcome is currently selected
   // in the dropdown, in case it changed since selectService() last ran.
   selectService(selectedServiceName);
@@ -214,12 +234,34 @@ async function checkBluetoothAvailability() {
   }
 }
 
+// Proactive readiness check for 'web-sdk' mode: rather than letting a
+// CONNECT POS click fail with an error only after the fact, show plainly
+// that the script isn't loaded yet. This does not know or guess the real
+// script URL — it only checks for the global the adapter already expects
+// (see src/cubo/webSdkCuboAdapter.js), so it stays accurate however the
+// real script ends up being named once Cubo's answer is in hand.
+function updateSdkReadiness() {
+  const isWebSdk = currentMode() === 'web-sdk';
+  const sdkStatusEl = el('sdk-status');
+  if (!isWebSdk) {
+    sdkStatusEl.textContent = '';
+    el('connect-btn').disabled = false;
+    return;
+  }
+  const loaded = typeof window.CuboSDK !== 'undefined';
+  sdkStatusEl.textContent = loaded
+    ? 'Cubo Web SDK script detected on this page.'
+    : 'Cubo Web SDK script not loaded yet — see CUBO-INTEGRATION.md ("How to activate mode: real"). CONNECT POS is disabled until it is.';
+  el('connect-btn').disabled = !loaded;
+}
+
 function wireModeToggle() {
   document.querySelectorAll('input[name="mode"]').forEach((input) => {
     input.addEventListener('change', () => {
       const isWebSdk = currentMode() === 'web-sdk';
       el('web-sdk-fields').classList.toggle('hidden', !isWebSdk);
       el('mock-outcome-row').classList.toggle('hidden', isWebSdk);
+      updateSdkReadiness();
       // Mode is fixed at provider-creation time — switching modes mid-flow
       // means starting a fresh provider/session, same as RESET.
       resetLab();
@@ -242,6 +284,7 @@ async function init() {
     return;
   }
 
+  updateSdkReadiness();
   buildProvider();
 
   el('service-basic').addEventListener('click', () => selectService('basic'));

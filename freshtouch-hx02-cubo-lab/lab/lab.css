@@ -72,6 +72,7 @@ body {
 
 .mode-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .web-sdk-fields.hidden { display: none; }
+.sdk-status { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; }
 .api-key-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); width: 100%; }
 .api-key-label input, #mock-outcome { padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #0f1720; color: var(--text); }
 
