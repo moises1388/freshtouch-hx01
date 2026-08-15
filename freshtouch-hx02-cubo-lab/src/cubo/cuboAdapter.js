@@ -1,5 +1,8 @@
 import { createMockCuboAdapter } from './mockCuboAdapter.js';
 import { createWebSdkCuboAdapter } from './webSdkCuboAdapter.js';
+import { CUBO_EVENTS, CUBO_STATUS_VALUES } from './cuboEvents.js';
+
+export { CUBO_EVENTS, CUBO_STATUS_VALUES };
 
 // ISO 4217 numeric currency codes, as used by startPayment()'s
 // `currencyCode` parameter (confirmed shape, see webSdkCuboAdapter.js).

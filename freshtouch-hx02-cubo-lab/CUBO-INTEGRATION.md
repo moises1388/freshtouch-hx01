@@ -1,68 +1,95 @@
 # Cubo Web SDK Integration — Research Findings
 
-Researched 2026-08-15. Primary source:
+Primary source:
 [developers.cubopago.com/sdks/web-sdk](https://developers.cubopago.com/sdks/web-sdk).
 
 ## How this was researched, and its limits
 
-Direct `WebFetch` to `developers.cubopago.com` and `www.cubopago.com` is
-**blocked by this environment's network egress proxy** (`EGRESS_BLOCKED`).
-What follows was gathered through web search, which returned
-search-engine-cached summaries of the official docs page rather than the
-raw page itself. That's good enough to plan an architecture around, but
-**it is not a substitute for a human opening the real docs page in an
-ordinary browser** before wiring this lab to a real device. Every claim
-below is marked CONFIRMED (backed by the search results, attributable to
-the docs page) or UNVERIFIED (assumed, or not obtainable from what was
-reachable). Nothing here was invented as if it were confirmed.
+This session's own direct access is blocked: `WebFetch` to
+`developers.cubopago.com` and `www.cubopago.com` returns `EGRESS_BLOCKED`,
+and a direct `curl` through this environment's egress proxy confirms it's a
+policy-level `403` on both hosts — not a fixable client/TLS issue. An
+initial pass (2026-08-15) was built from web-search-engine cached summaries
+of the docs page, which was enough to plan an architecture around but left
+several items unconfirmed.
+
+**Update (2026-08-15, later same day):** the machine owner opened
+`https://developers.cubopago.com/sdks/web-sdk` directly in their own
+browser and reported its contents back verbatim. The items below marked
+CONFIRMED under "events" and "status values" come from that owner-verified
+read of the live page, not from this session's own fetch (still blocked).
+Everything else keeps its original sourcing. Payload field shapes that
+weren't part of what the owner reported are still marked UNVERIFIED below —
+they were deliberately not guessed.
 
 ## CONFIRMED
 
 - The Web SDK works **only with the Cubo QPOS Cute** terminal model.
 - An **API Key generated in Cubo Admin** is required to perform payments.
+  Sandbox access itself is requested through Cubo's contact center; keys
+  are then generated from Cubo Admin.
 - The application **must be served over HTTPS**; `http://localhost` is
   allowed for development only.
 - The device running the app needs **Bluetooth available and enabled**.
-- The SDK is **not compatible with Safari** (macOS/iOS) **or Firefox** —
-  practically, this means the HX02 tablet must run Chrome (or another
-  Chromium-based browser).
-- `connect()` / `disconnect()` manage the Bluetooth link to the reader
-  directly from the browser.
+- Supported browsers: **Chrome (Desktop/Android), Edge (Desktop), Opera
+  (Desktop/Android)**. (Not Safari, not Firefox.) The HX02 tablet must run
+  one of the supported browsers — Chrome for Android is the natural choice.
+- Methods: **`connect()`**, **`disconnect()`**, **`startPayment()`**,
+  **`on()`**. `connect()` / `disconnect()` manage the Bluetooth link to the
+  reader directly from the browser.
 - `startPayment({ amount, currencyCode, currencySymbol })`:
-  - `amount`: charge amount **in cents** (e.g. `"1250"` for $12.50 / Q12.50).
-  - `currencyCode`: ISO 4217 **numeric** code, e.g. `"0840"` for USD,
-    `"0320"` for GTQ.
-  - `currencySymbol`: display symbol, e.g. `"$"` or `"Q"`.
-- Events are subscribed via an `on()` method. A **`status`** event reports
-  changes in the general connection/payment state.
+  - `amount`: charge amount **in cents**, e.g. Q20.00 → `2000`, Q35.00 →
+    `3500`.
+  - `currencyCode`: ISO 4217 **numeric** code — **GTQ = `"0320"`** for
+    Guatemala (also seen: `"0840"` for USD).
+  - `currencySymbol`: display symbol, e.g. `"Q"` or `"$"`.
+- **Events, subscribed via `on()`:** `connected`, `disconnected`,
+  `loading`, `transactionResult`, `error`, `status`.
+- **Status values** (carried by the `status` event): `searching`,
+  `connecting`, `connected`, `disconnected`, `waiting_for_card`,
+  `processing_payment`, `payment_success`, `payment_failed`,
+  `transaction_terminated`.
+
+  Note the apparent overlap: `connected`/`disconnected` show up both as
+  their own discrete events *and* as values the `status` event can carry.
+  The exact relationship between the two (does `status` fire in parallel
+  with the discrete events, or only for states that have no dedicated
+  event?) isn't specified by what was reported — treat both as real and
+  worth listening to, without assuming how they interleave until a real
+  device is observed.
 
 ## UNVERIFIED — must be confirmed before touching real hardware
 
-- **Whether `connected` / `disconnected` / `transactionResult` / `error`
-  exist as separate named events** (as this lab's brief assumed and as
-  `src/cubo/mockCuboAdapter.js` and `src/cubo/webSdkCuboAdapter.js`
-  currently model them), **or** whether every state change — including
-  these — is instead delivered through the single `status` event with a
-  `state`/`status` field. This is the single biggest open question before
-  wiring `webSdkCuboAdapter.js` for real.
-- The exact payload field names for a successful transaction (transaction
-  ID, reference ID, authorization code, card read type). The lab UI and
-  mock adapter assume `transactionId`, `referenceId`, `authorizationCode`,
-  `readType` — these are working assumptions, not documented facts.
+Now narrower than before: event and status *names* are confirmed above.
+What's still open is their exact *payload shape*, and SDK distribution
+details nobody has reported yet:
+
+- **The exact payload field names** inside `transactionResult` (transaction
+  ID, reference ID, authorization code, card read type) — not specified by
+  what was verified. The lab UI and mock adapter still use
+  `transactionId`, `referenceId`, `authorizationCode`, `readType` as
+  working assumptions only, clearly not to be treated as documented fact.
+- **The exact payload fields of the `error` event** — not specified.
+  `mockCuboAdapter.js`'s `{ code, message }` shape is a placeholder, not a
+  confirmed contract.
+- **The exact payload of the `status` event** (is the state in a `state`
+  field, a `status` field, something else? is there a timestamp, a
+  message?) — not specified.
 - The SDK's distribution: script tag URL / npm package name, and how it
-  attaches to the page (`window.CuboSDK` is a guess in
+  attaches to the page (`window.CuboSDK` is still a guess in
   `webSdkCuboAdapter.js`, marked as such).
-- The exact initialization call signature (assumed
+- The exact initialization call signature (still assumed
   `new window.CuboSDK({ apiKey, environment })`).
 - Error codes and their meanings.
 - Sandbox vs. production behavioral differences beyond the `environment`
-  flag's existence.
+  flag's existing.
 
-**Action needed:** someone with normal internet access should open
-`https://developers.cubopago.com/sdks/web-sdk` in a browser, note the exact
-event names/payloads and script URL, and update
-`src/cubo/webSdkCuboAdapter.js` accordingly (the file has inline comments
-marking exactly which lines are guesses).
+**Action needed:** the same owner (or anyone with normal browser access)
+pulling up the official SDK repository/demo referenced from that docs page,
+or running one real `connect()`/`startPayment()` call against sandbox and
+recording the raw event payloads, is what would close these out. Until
+then `src/cubo/webSdkCuboAdapter.js` keeps its payload-shape assumptions
+clearly flagged as assumptions, not facts.
 
 ## HTTPS / localhost
 
@@ -108,9 +135,9 @@ none were invented:
 | `POS_MODEL` | Assumed QPOS Cute per the brief; confirm serial when hardware is assigned |
 | `POS_SERIAL` | Pending |
 | `POS_ID` | Pending |
-| `SANDBOX_ENABLED` | Pending confirmation from Cubo |
+| `SANDBOX_ENABLED` | Pending — known channel: request sandbox access through Cubo's contact center, then generate the key in Cubo Admin |
 | `PRODUCTION_APPROVED` | Not applicable yet — Phase 1 only |
-| `CUBO_CONTACT` | Pending |
+| `CUBO_CONTACT` | Pending — need the actual contact center channel (phone/email/form) |
 | `CUBO_REQUIREMENTS` | Pending — ask Cubo directly whether a merchant/KYC step is needed before sandbox keys are issued |
 
 Track these in `machines/HX02/machine.config.json` (non-secret fields) and

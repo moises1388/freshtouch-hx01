@@ -3,11 +3,11 @@
 // This lab environment has no physical tablet, no Bluetooth, and no real
 // Cubo credentials, so real-hardware testing cannot happen from here. This
 // mock lets the rest of the stack (state machine, UI, ESP32 guard, logging)
-// be built and tested end-to-end today. It mirrors the event contract
-// documented in CUBO-INTEGRATION.md: 'connected', 'disconnected',
-// 'transactionResult', 'error' — the same shape the lab brief specified,
-// clearly flagged there as needing reconciliation against the live docs
-// before any real-device test.
+// be built and tested end-to-end today. It emits a subset of the real SDK's
+// confirmed event names (see cuboEvents.js / CUBO-INTEGRATION.md):
+// 'connected', 'disconnected', 'transactionResult', 'error'. It does not
+// emit 'loading' or 'status' — those exist on the real SDK but their
+// payload shapes aren't confirmed yet, so nothing here guesses at them.
 
 import { log } from '../logger.js';
 
