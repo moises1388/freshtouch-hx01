@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FreshTouch HX02 — Cubo Payment Test</title>
+<link rel="stylesheet" href="lab.css" />
+
+<!--
+  Official Cubo Web SDK script tag: URL not committed here on purpose —
+  it was not confirmed against the live docs (WebFetch to
+  developers.cubopago.com is blocked in this environment). Fill this in
+  from https://developers.cubopago.com/sdks/web-sdk before using "web-sdk"
+  mode below. See CUBO-INTEGRATION.md.
+
+  <script src="PENDING_OFFICIAL_CUBO_WEB_SDK_URL"></script>
+-->
+</head>
+<body>
+  <main class="lab">
+    <header class="lab-header">
+      <h1>FRESHTOUCH HX02</h1>
+      <h2>CUBO PAYMENT TEST</h2>
+    </header>
+
+    <section class="status-grid">
+      <div class="status-card">
+        <span class="label">POS</span>
+        <span class="value" id="pos-status">Disconnected</span>
+      </div>
+      <div class="status-card">
+        <span class="label">Bluetooth</span>
+        <span class="value" id="bluetooth-status">Checking…</span>
+      </div>
+      <div class="status-card">
+        <span class="label">Environment</span>
+        <span class="value" id="environment-value">SANDBOX</span>
+      </div>
+      <div class="status-card">
+        <span class="label">Machine</span>
+        <span class="value" id="machine-value">HX02</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Service</h3>
+      <div class="service-buttons">
+        <button id="service-basic" class="service-btn" data-service="basic">BASIC Q20</button>
+        <button id="service-premium" class="service-btn" data-service="premium">PREMIUM Q35</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Adapter mode (lab only)</h3>
+      <div class="mode-row">
+        <label><input type="radio" name="mode" value="mock" checked /> Simulated (no hardware)</label>
+        <label><input type="radio" name="mode" value="web-sdk" /> Real Cubo Web SDK</label>
+      </div>
+      <div id="web-sdk-fields" class="web-sdk-fields hidden">
+        <label class="api-key-label">
+          API Key (session only, never saved)
+          <input type="password" id="api-key-input" autocomplete="off" placeholder="paste sandbox API key" />
+        </label>
+      </div>
+      <div id="mock-outcome-row" class="mode-row">
+        <label>Simulated outcome
+          <select id="mock-outcome">
+            <option value="SUCCESS">SUCCESS</option>
+            <option value="DECLINED">DECLINED</option>
+            <option value="CANCELLED">CANCELLED</option>
+            <option value="ERROR">ERROR</option>
+            <option value="TIMEOUT">TIMEOUT</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel actions">
+      <button id="connect-btn" class="action-btn">CONNECT POS</button>
+      <button id="pay-btn" class="action-btn" disabled>TEST PAYMENT</button>
+      <button id="reset-btn" class="action-btn secondary">RESET</button>
+    </section>
+
+    <section class="panel">
+      <h3>Result</h3>
+      <dl class="result-grid">
+        <dt>Connection status</dt><dd id="r-connection">—</dd>
+        <dt>Payment status</dt><dd id="r-payment">IDLE</dd>
+        <dt>Transaction status</dt><dd id="r-transaction">—</dd>
+        <dt>Transaction ID</dt><dd id="r-txn-id">—</dd>
+        <dt>Reference ID</dt><dd id="r-ref-id">—</dd>
+        <dt>Authorization code</dt><dd id="r-auth-code">—</dd>
+        <dt>Read type</dt><dd id="r-read-type">—</dd>
+        <dt>Timestamp</dt><dd id="r-timestamp">—</dd>
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h3>Diagnostic log (local only, no sensitive data)</h3>
+      <pre id="log-output" class="log-output"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="lab.js"></script>
+</body>
+</html>
