@@ -1,7 +1,23 @@
+// FreshTouch HX02 lab screen — wired to PaymentProvider only.
+//
+// This file no longer talks to src/cubo/cuboAdapter.js or
+// src/payment/paymentStateMachine.js directly. It goes through
+// src/payment/paymentProvider.js -> createCuboCardProvider(), the same
+// abstraction documented in
+// .claude/skills/hydrox-payment-architecture/SKILL.md, so this screen
+// demonstrates the real architecture, not a shortcut around it.
+//
+// Scope of this pass, per explicit instruction: mock mode only, no Make,
+// no QR, no real API key, no ESP32 transport. The "Real Cubo Web SDK"
+// radio option still routes through the same provider (mode:'web-sdk'),
+// unchanged from before — selecting it without the official SDK <script>
+// tag in place simply fails at connectPos() with a clear error, same as
+// it always has.
+
 import { loadMachineConfig } from '../src/config/loadMachineConfig.js';
-import { createCuboAdapter, CUBO_CURRENCY_ISO4217 } from '../src/cubo/cuboAdapter.js';
-import { createPaymentSession, STATES } from '../src/payment/paymentStateMachine.js';
-import { requestCycleStart, Esp32NotImplementedError } from '../src/esp32/esp32Interface.js';
+import { createPaymentProvider, STATES, canStartCycle, isTerminal } from '../src/payment/paymentProvider.js';
+import { Esp32NotImplementedError } from '../src/payment/cuboCardProvider.js';
+import { CUBO_EVENTS } from '../src/cubo/cuboEvents.js';
 import { log } from '../src/logger.js';
 
 const MACHINE_ID = 'HX02';
@@ -22,25 +38,167 @@ console.log = (...args) => {
 };
 
 let machineConfig = null;
-let session = createPaymentSession();
-let adapter = null;
-let selectedService = null;
+let provider = null;
+let selectedServiceName = null;
 
 function setStatus(id, text) {
   el(id).textContent = text;
 }
 
-function renderPaymentState() {
-  setStatus('r-payment', session.getState());
-  el('pay-btn').disabled = !(
-    session.getState() === STATES.POS_CONNECTED && selectedService
-  );
+function currentMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+
+function currentMockOutcome() {
+  return el('mock-outcome').value;
 }
 
 function resetResultPanel() {
-  ['r-connection', 'r-transaction', 'r-txn-id', 'r-ref-id', 'r-auth-code', 'r-read-type', 'r-timestamp'].forEach(
-    (id) => setStatus(id, '—')
+  ['r-transaction', 'r-txn-id', 'r-ref-id', 'r-auth-code', 'r-read-type', 'r-timestamp'].forEach((id) =>
+    setStatus(id, '—')
   );
+}
+
+function renderButtons() {
+  const state = provider ? provider.getStatus() : STATES.IDLE;
+  el('pay-btn').disabled = state !== STATES.POS_CONNECTED;
+}
+
+// This is the one place that decides, on screen, whether the payment that
+// just happened may authorize a cycle. It mirrors canStartCycle() exactly
+// — PAYMENT_SUCCESS and nothing else — and only ever reaches the
+// not-implemented ESP32 stub, never a real transport.
+function updateCycleAuthorization() {
+  if (!provider) return;
+  const state = provider.getStatus();
+  const authorized = provider.canStartCycle();
+  setStatus('r-cycle-auth', authorized ? 'AUTHORIZED' : 'NOT AUTHORIZED');
+
+  if (authorized) {
+    log(MACHINE_ID, 'PAYMENT_SUCCESS — cycle authorization available');
+    try {
+      provider.requestCycle();
+    } catch (err) {
+      if (err instanceof Esp32NotImplementedError) {
+        log(MACHINE_ID, 'ESP32 guard passed (state=PAYMENT_SUCCESS); transport not implemented yet');
+      } else {
+        log(MACHINE_ID, 'ESP32 guard refused cycle start', { reason: err.message });
+      }
+    }
+  } else if (isTerminal(state)) {
+    log(MACHINE_ID, `Payment ended in ${state} — machine cycle will NOT start`);
+  }
+}
+
+function handleProviderEvent(snapshot) {
+  setStatus('r-payment', snapshot.state);
+
+  switch (snapshot.event) {
+    case 'connecting':
+      setStatus('pos-status', 'Connecting…');
+      break;
+    case CUBO_EVENTS.CONNECTED:
+      setStatus('pos-status', 'Connected');
+      setStatus('r-connection', 'CONNECTED');
+      break;
+    case 'connect_failed':
+      setStatus('pos-status', 'Error');
+      log(MACHINE_ID, 'POS connection failed', { reason: snapshot.reason });
+      break;
+    case CUBO_EVENTS.DISCONNECTED:
+      setStatus('pos-status', 'Disconnected');
+      setStatus('r-connection', 'DISCONNECTED');
+      break;
+    case CUBO_EVENTS.ERROR:
+      log(MACHINE_ID, 'Adapter error event', { code: snapshot.code });
+      break;
+    case 'payment_started':
+      resetResultPanel();
+      setStatus('r-transaction', 'WAITING_FOR_CARD');
+      break;
+    case 'card_detected':
+      setStatus('r-transaction', 'PROCESSING_PAYMENT');
+      break;
+    case CUBO_EVENTS.TRANSACTION_RESULT: {
+      const result = snapshot.result;
+      setStatus('r-transaction', result.status);
+      setStatus('r-txn-id', result.transactionId || '—');
+      setStatus('r-ref-id', result.referenceId || '—');
+      setStatus('r-auth-code', result.authorizationCode || '—');
+      setStatus('r-read-type', result.readType || '—');
+      setStatus('r-timestamp', result.timestamp || '—');
+      break;
+    }
+    default:
+      break;
+  }
+
+  updateCycleAuthorization();
+  renderButtons();
+}
+
+function buildProvider() {
+  const mode = currentMode();
+  const apiKey = el('api-key-input').value.trim();
+  provider = createPaymentProvider({ type: 'card', mode, machineConfig, apiKey: apiKey || undefined });
+  provider.onResult(handleProviderEvent);
+}
+
+function resetLab() {
+  buildProvider();
+  selectedServiceName = null;
+  document.querySelectorAll('.service-btn').forEach((btn) => btn.classList.remove('selected'));
+  setStatus('pos-status', 'Disconnected');
+  setStatus('r-connection', '—');
+  setStatus('r-payment', STATES.IDLE);
+  setStatus('r-cycle-auth', 'NOT AUTHORIZED');
+  resetResultPanel();
+  renderButtons();
+}
+
+function selectService(name) {
+  selectedServiceName = name;
+  const service = machineConfig.services[name];
+  document.querySelectorAll('.service-btn').forEach((btn) => {
+    btn.classList.toggle('selected', btn.dataset.service === name);
+  });
+  // Re-callable safely: selectService() only transitions from IDLE/
+  // SERVICE_SELECTED, so re-selecting (e.g. to refresh the mock outcome
+  // right before paying) just updates which service/outcome is pending.
+  provider.selectService({ ...service, mockOutcome: currentMockOutcome() });
+  renderButtons();
+}
+
+async function connectPos() {
+  if (!selectedServiceName) {
+    log(MACHINE_ID, 'Select a service before connecting the POS');
+    return;
+  }
+  try {
+    await provider.connectPos();
+  } catch (err) {
+    log(MACHINE_ID, 'connectPos() threw', { reason: err.message });
+  }
+}
+
+async function disconnectPos() {
+  try {
+    await provider.disconnectPos();
+  } catch (err) {
+    log(MACHINE_ID, 'disconnectPos() threw', { reason: err.message });
+  }
+}
+
+async function testPayment() {
+  if (!selectedServiceName) return;
+  // Refresh the service with whatever mock outcome is currently selected
+  // in the dropdown, in case it changed since selectService() last ran.
+  selectService(selectedServiceName);
+  try {
+    await provider.createPayment();
+  } catch (err) {
+    log(MACHINE_ID, 'createPayment() threw', { reason: err.message });
+  }
 }
 
 async function checkBluetoothAvailability() {
@@ -56,143 +214,15 @@ async function checkBluetoothAvailability() {
   }
 }
 
-function currentMode() {
-  return document.querySelector('input[name="mode"]:checked').value;
-}
-
-function buildAdapter() {
-  const mode = currentMode();
-  const apiKey = el('api-key-input').value.trim();
-  adapter = createCuboAdapter({ mode, machineConfig, apiKey: apiKey || undefined });
-
-  adapter.on('connected', () => {
-    setStatus('pos-status', 'Connected');
-    setStatus('r-connection', 'CONNECTED');
-    session.send('POS_CONNECTED');
-    renderPaymentState();
-  });
-
-  adapter.on('disconnected', () => {
-    setStatus('pos-status', 'Disconnected');
-    setStatus('r-connection', 'DISCONNECTED');
-  });
-
-  adapter.on('error', (payload) => {
-    log(MACHINE_ID, 'Adapter error event', { code: payload?.code });
-  });
-
-  adapter.on('transactionResult', (result) => {
-    setStatus('r-transaction', result.status);
-    setStatus('r-txn-id', result.transactionId || '—');
-    setStatus('r-ref-id', result.referenceId || '—');
-    setStatus('r-auth-code', result.authorizationCode || '—');
-    setStatus('r-read-type', result.readType || '—');
-    setStatus('r-timestamp', result.timestamp || '—');
-
-    const eventForResult = {
-      SUCCESS: 'SUCCESS',
-      DECLINED: 'DECLINED',
-      CANCELLED: 'CANCEL',
-      ERROR: 'ERROR',
-      TIMEOUT: 'TIMEOUT',
-    }[result.status];
-
-    if (!eventForResult) {
-      log(MACHINE_ID, 'Unrecognized transaction status, refusing to transition', {
-        status: result.status,
-      });
-      return;
-    }
-
-    // CARD_DETECTED (WAITING_FOR_CARD -> PROCESSING_PAYMENT) must happen
-    // before any terminal event is valid — see cuboCardProvider.js for why.
-    if (session.getState() === STATES.WAITING_FOR_CARD) {
-      session.send('CARD_DETECTED');
-    }
-    session.send(eventForResult);
-    renderPaymentState();
-    handlePaymentOutcome();
-  });
-}
-
-function handlePaymentOutcome() {
-  const state = session.getState();
-  if (state !== STATES.PAYMENT_SUCCESS) {
-    log(MACHINE_ID, `Payment ended in ${state} — machine cycle will NOT start`);
-    return;
-  }
-
-  log(MACHINE_ID, 'Payment SUCCESS — transaction reference available');
-  try {
-    requestCycleStart({ machineId: MACHINE_ID, state, service: selectedService });
-  } catch (err) {
-    if (err instanceof Esp32NotImplementedError) {
-      log(MACHINE_ID, 'ESP32 guard passed (state=PAYMENT_SUCCESS); transport not implemented yet');
-    } else {
-      log(MACHINE_ID, 'ESP32 guard refused cycle start', { reason: err.message });
-    }
-  }
-}
-
-function selectService(name) {
-  selectedService = machineConfig.services[name];
-  document.querySelectorAll('.service-btn').forEach((btn) => {
-    btn.classList.toggle('selected', btn.dataset.service === name);
-  });
-  if (session.getState() === STATES.IDLE) session.send('SELECT_SERVICE');
-  if (session.getState() === STATES.SERVICE_SELECTED) session.send('SELECT_CARD_PAYMENT');
-  renderPaymentState();
-}
-
-async function connectPos() {
-  buildAdapter();
-  setStatus('pos-status', 'Connecting…');
-  session.send('CONNECT_POS');
-  renderPaymentState();
-  try {
-    await adapter.connect();
-  } catch (err) {
-    log(MACHINE_ID, 'POS connection failed', { reason: err.message });
-    session.send('POS_CONNECTION_FAILED');
-    setStatus('pos-status', 'Error');
-    renderPaymentState();
-  }
-}
-
-async function testPayment() {
-  if (!selectedService) return;
-  resetResultPanel();
-  session.send('START_PAYMENT');
-  renderPaymentState();
-
-  const outcome = el('mock-outcome').value;
-  try {
-    await adapter.startPayment({
-      amount: selectedService.amount * 100,
-      currencyCode: CUBO_CURRENCY_ISO4217[machineConfig.currency],
-      currencySymbol: 'Q',
-      outcome,
-    });
-  } catch (err) {
-    log(MACHINE_ID, 'startPayment threw', { reason: err.message });
-  }
-}
-
-function resetLab() {
-  session = createPaymentSession();
-  selectedService = null;
-  document.querySelectorAll('.service-btn').forEach((btn) => btn.classList.remove('selected'));
-  setStatus('pos-status', 'Disconnected');
-  resetResultPanel();
-  renderPaymentState();
-}
-
 function wireModeToggle() {
   document.querySelectorAll('input[name="mode"]').forEach((input) => {
     input.addEventListener('change', () => {
       const isWebSdk = currentMode() === 'web-sdk';
       el('web-sdk-fields').classList.toggle('hidden', !isWebSdk);
       el('mock-outcome-row').classList.toggle('hidden', isWebSdk);
+      // Mode is fixed at provider-creation time — switching modes mid-flow
+      // means starting a fresh provider/session, same as RESET.
+      resetLab();
     });
   });
 }
@@ -212,14 +242,17 @@ async function init() {
     return;
   }
 
+  buildProvider();
+
   el('service-basic').addEventListener('click', () => selectService('basic'));
   el('service-premium').addEventListener('click', () => selectService('premium'));
   el('connect-btn').addEventListener('click', connectPos);
+  el('disconnect-btn').addEventListener('click', disconnectPos);
   el('pay-btn').addEventListener('click', testPayment);
   el('reset-btn').addEventListener('click', resetLab);
 
-  renderPaymentState();
-  log(MACHINE_ID, 'FreshTouch HX02 Cubo lab loaded');
+  renderButtons();
+  log(MACHINE_ID, 'FreshTouch HX02 Cubo lab loaded (PaymentProvider mode)');
 }
 
 init();

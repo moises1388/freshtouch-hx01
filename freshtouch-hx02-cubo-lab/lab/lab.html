@@ -70,6 +70,7 @@
             <option value="CANCELLED">CANCELLED</option>
             <option value="ERROR">ERROR</option>
             <option value="TIMEOUT">TIMEOUT</option>
+            <option value="TRANSACTION_TERMINATED">TRANSACTION_TERMINATED</option>
           </select>
         </label>
       </div>
@@ -78,6 +79,7 @@
     <section class="panel actions">
       <button id="connect-btn" class="action-btn">CONNECT POS</button>
       <button id="pay-btn" class="action-btn" disabled>TEST PAYMENT</button>
+      <button id="disconnect-btn" class="action-btn secondary">DISCONNECT POS</button>
       <button id="reset-btn" class="action-btn secondary">RESET</button>
     </section>
 
@@ -86,6 +88,7 @@
       <dl class="result-grid">
         <dt>Connection status</dt><dd id="r-connection">—</dd>
         <dt>Payment status</dt><dd id="r-payment">IDLE</dd>
+        <dt>Cycle authorization</dt><dd id="r-cycle-auth">NOT AUTHORIZED</dd>
         <dt>Transaction status</dt><dd id="r-transaction">—</dd>
         <dt>Transaction ID</dt><dd id="r-txn-id">—</dd>
         <dt>Reference ID</dt><dd id="r-ref-id">—</dd>

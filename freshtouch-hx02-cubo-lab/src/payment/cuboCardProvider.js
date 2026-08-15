@@ -87,6 +87,7 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     // the outcome.
     if (session.getState() === STATES.WAITING_FOR_CARD) {
       session.send('CARD_DETECTED');
+      notify({ event: 'card_detected' });
     }
     session.send(stateEvent);
     notify({ event: CUBO_EVENTS.TRANSACTION_RESULT, result, transitioned: true });
