@@ -156,6 +156,12 @@ so swapping the mock for the real SDK — once the UNVERIFIED items above are
 resolved — should not require touching anything outside
 `src/cubo/webSdkCuboAdapter.js`.
 
+One layer up, `src/payment/cuboCardProvider.js` wraps this adapter plus the
+payment state machine into the `PaymentProvider` shape shared with (future)
+other payment methods — see
+`.claude/skills/hydrox-payment-architecture/SKILL.md` for that architecture.
+It does not change anything documented above; it only adds wiring on top.
+
 ## ESP32 (Phase 2, not started)
 
 Per the brief, no ESP32 transport was assumed or implemented. HX01's

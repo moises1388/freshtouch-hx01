@@ -42,9 +42,12 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
   }
 
   /**
-   * @param {{amount:number, currencyCode:string, currencySymbol:string, outcome?:'SUCCESS'|'DECLINED'|'CANCELLED'|'ERROR'|'TIMEOUT'}} params
+   * @param {{amount:number, currencyCode:string, currencySymbol:string, outcome?:'SUCCESS'|'DECLINED'|'CANCELLED'|'ERROR'|'TIMEOUT'|'TRANSACTION_TERMINATED'}} params
    *   `outcome` is a lab-only override to exercise every result path; the
-   *   real SDK obviously has no such parameter.
+   *   real SDK obviously has no such parameter. TRANSACTION_TERMINATED
+   *   mirrors the status value named in the official docs (see
+   *   cuboEvents.js) — its real transactionResult.status spelling is
+   *   UNVERIFIED, this is a placeholder for exercising "not success" paths.
    */
   async function startPayment({ amount, currencyCode, currencySymbol, outcome = 'SUCCESS' }) {
     if (!connected) {
@@ -65,6 +68,10 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
     }
     if (outcome === 'TIMEOUT') {
       emit('transactionResult', { status: 'TIMEOUT', timestamp: nowIso() });
+      return;
+    }
+    if (outcome === 'TRANSACTION_TERMINATED') {
+      emit('transactionResult', { status: 'TRANSACTION_TERMINATED', timestamp: nowIso() });
       return;
     }
 

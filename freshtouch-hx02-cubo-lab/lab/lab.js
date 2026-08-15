@@ -104,6 +104,11 @@ function buildAdapter() {
       return;
     }
 
+    // CARD_DETECTED (WAITING_FOR_CARD -> PROCESSING_PAYMENT) must happen
+    // before any terminal event is valid — see cuboCardProvider.js for why.
+    if (session.getState() === STATES.WAITING_FOR_CARD) {
+      session.send('CARD_DETECTED');
+    }
     session.send(eventForResult);
     renderPaymentState();
     handlePaymentOutcome();

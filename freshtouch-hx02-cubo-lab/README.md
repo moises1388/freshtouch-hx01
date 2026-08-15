@@ -59,12 +59,30 @@ freshtouch-hx02-cubo-lab/
 ├── src/
 │   ├── config/loadMachineConfig.js
 │   ├── cubo/                 adapter interface + mock + real-SDK stub
-│   ├── payment/paymentStateMachine.js   the safety-critical module
+│   ├── payment/
+│   │   ├── paymentStateMachine.js   the safety-critical module
+│   │   ├── paymentProvider.js       PaymentProvider contract + factory
+│   │   ├── cuboCardProvider.js      card payments — implemented, mock-tested
+│   │   └── cuboQRProvider.js        QR — documented shape only, inert, not implemented
 │   ├── esp32/esp32Interface.js          conceptual stub only, Phase 2
 │   └── logger.js             sensitive-data-safe logging
+├── .claude/skills/hydrox-payment-architecture/SKILL.md   the reusable process doc
 ├── lab/                       the test screen (lab.html/js/css)
 └── tests/                     node:test unit tests (no dependencies)
 ```
+
+## PaymentProvider architecture
+
+`src/payment/paymentProvider.js` sits above the state machine and the Cubo
+adapter as the common interface every payment method will implement —
+today only `CuboCardProvider` actually works (mock-tested); `CuboQRProvider`
+is a deliberately inert stub documenting QR's future shape from HX01's real,
+audited flow, without connecting to anything. See
+`.claude/skills/hydrox-payment-architecture/SKILL.md` for the full
+architecture, security rules, and the process for extending it to a new
+payment method or a new machine (HX03, HX04, ...). `lab/lab.js` still talks
+directly to the lower-level adapter/state-machine (not yet through
+`PaymentProvider`) — that rewiring is a deliberate follow-up, not done here.
 
 ## Running the lab UI
 
@@ -90,9 +108,10 @@ cd freshtouch-hx02-cubo-lab
 npm test    # node --test — no dependencies to install
 ```
 
-39 unit tests cover the payment state machine, the ESP32 safety guard, and
-the mock Cubo adapter. See `TEST-PLAN.md` for the full matrix, including the
-manual hardware checklist that can't be automated from here.
+55 unit tests cover the payment state machine, the ESP32 safety guard, the
+mock Cubo adapter, and the `CuboCardProvider`/`CuboQRProvider` layer. See
+`TEST-PLAN.md` for the full matrix, including the manual hardware checklist
+that can't be automated from here.
 
 ## Status against the phase-1 checklist
 
