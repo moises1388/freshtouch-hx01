@@ -7,13 +7,19 @@
 <link rel="stylesheet" href="lab.css" />
 
 <!--
-  Official Cubo Web SDK script tag: URL not committed here on purpose —
-  it was not confirmed against the live docs (WebFetch to
-  developers.cubopago.com is blocked in this environment). Fill this in
-  from https://developers.cubopago.com/sdks/web-sdk before using "web-sdk"
-  mode below. See CUBO-INTEGRATION.md.
+  Official Cubo Web SDK script tag — CONFIRMED pattern (source: Cubo's own
+  demo repo, github.com/Cubo-App/cubo-pos-sdk-web-demo):
 
-  <script src="PENDING_OFFICIAL_CUBO_WEB_SDK_URL"></script>
+    <script src="https://sdk.cubopago.com/pos/vX.Y.Z/cubo-pos-sdk-web.js"></script>
+
+  Left commented out here because the exact current version (X.Y.Z) isn't
+  pinned down for this project yet — the demo repo's own docs disagree
+  with each other (v1.1.1 / v1.10.0 / v1.11.0 across its three doc files;
+  its demo.html itself uses v1.11.0, the most trustworthy of the three).
+  Confirm the current version before uncommenting — see the "How to
+  activate mode: real" section in CUBO-INTEGRATION.md.
+
+  <script src="https://sdk.cubopago.com/pos/v1.11.0/cubo-pos-sdk-web.js"></script>
 -->
 </head>
 <body>
@@ -67,11 +73,9 @@
         <label>Simulated outcome
           <select id="mock-outcome">
             <option value="SUCCESS">SUCCESS</option>
-            <option value="DECLINED">DECLINED</option>
-            <option value="CANCELLED">CANCELLED</option>
-            <option value="ERROR">ERROR</option>
-            <option value="TIMEOUT">TIMEOUT</option>
-            <option value="TRANSACTION_TERMINATED">TRANSACTION_TERMINATED</option>
+            <option value="DECLINED">DECLINED (transaction_declined)</option>
+            <option value="PENDING">PENDING (do not retry)</option>
+            <option value="ERROR">ERROR (sdk_error)</option>
           </select>
         </label>
       </div>
@@ -91,12 +95,10 @@
         <dt>Payment status</dt><dd id="r-payment">IDLE</dd>
         <dt>Cycle authorization</dt><dd id="r-cycle-auth">NOT AUTHORIZED</dd>
         <dt>Transaction status</dt><dd id="r-transaction">—</dd>
-        <dt>Transaction ID</dt><dd id="r-txn-id">—</dd>
-        <dt>Reference ID</dt><dd id="r-ref-id">—</dd>
-        <dt>Authorization code</dt><dd id="r-auth-code">—</dd>
-        <dt>Read type</dt><dd id="r-read-type">—</dd>
-        <dt>Timestamp</dt><dd id="r-timestamp">—</dd>
+        <dt>Result message</dt><dd id="r-message">—</dd>
+        <dt>Transaction ID*</dt><dd id="r-txn-id">—</dd>
       </dl>
+      <p class="footnote">* from <code>result.data</code> — its real field names are still unconfirmed against the live SDK; this is the lab's own placeholder.</p>
     </section>
 
     <section class="panel">

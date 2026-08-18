@@ -1,197 +1,235 @@
 # Cubo Web SDK Integration — Research Findings
 
-Primary source:
-[developers.cubopago.com/sdks/web-sdk](https://developers.cubopago.com/sdks/web-sdk).
+Primary source: Cubo's own official demo repository,
+[github.com/Cubo-App/cubo-pos-sdk-web-demo](https://github.com/Cubo-App/cubo-pos-sdk-web-demo)
+(cloned and read directly in this session: `README.md`, `demo.html`,
+`src/app.js`, `llms.txt`, and
+`.claude/skills/cubo-sdk-help/references/*.md`). This is real, working
+example code and documentation from Cubo — not search-engine summaries,
+not guesses.
 
 ## How this was researched, and its limits
 
-This session's own direct access is blocked: `WebFetch` to
-`developers.cubopago.com` and `www.cubopago.com` returns `EGRESS_BLOCKED`,
-and a direct `curl` through this environment's egress proxy confirms it's a
-policy-level `403` on both hosts — not a fixable client/TLS issue. An
-initial pass (2026-08-15) was built from web-search-engine cached summaries
-of the docs page, which was enough to plan an architecture around but left
-several items unconfirmed.
+Earlier passes tried `developers.cubopago.com/sdks/web-sdk` directly and
+were blocked: `WebFetch` returns `EGRESS_BLOCKED`, and a raw `curl`
+through this environment's egress proxy confirms a policy-level `403` on
+that domain and `www.cubopago.com` — re-checked across three different
+proxy ports as the session reconnected, so it's the network policy, not a
+transient failure. Two earlier passes were built from (1) web-search
+cached summaries of that docs page, then (2) the machine owner reading
+that page directly in their own browser and reporting it back. Both left
+several items genuinely unverified, most importantly the SDK's global
+class name and the exact `transactionResult` payload shape.
 
-**Update (2026-08-15, later same day):** the machine owner opened
-`https://developers.cubopago.com/sdks/web-sdk` directly in their own
-browser and reported its contents back verbatim. The items below marked
-CONFIRMED under "events" and "status values" come from that owner-verified
-read of the live page, not from this session's own fetch (still blocked).
-Everything else keeps its original sourcing. Payload field shapes that
-weren't part of what the owner reported are still marked UNVERIFIED below —
-they were deliberately not guessed.
+**This pass supersedes those.** The machine owner obtained the URL of
+Cubo's official demo repository and this session cloned it directly
+(`github.com` is reachable even though `cubopago.com` is not) and read
+every file in it. Everything under CONFIRMED below comes from that repo.
+Anything still marked UNVERIFIED was checked for and genuinely not found
+in it — not merely unread.
+
+A separate, real npm registry search (done in an earlier pass; still
+valid) found no plausible `cubopago`-branded npm package — consistent with
+what the demo repo confirms: the SDK is distributed as a versioned
+`<script>` tag from `sdk.cubopago.com`, with `cubo-pos-sdk-web` also
+published to npm for bundler-based projects (see below).
 
 ## CONFIRMED
 
-- The Web SDK works **only with the Cubo QPOS Cute** terminal model.
-- An **API Key generated in Cubo Admin** is required to perform payments.
-  Sandbox access itself is requested through Cubo's contact center; keys
-  are then generated from Cubo Admin.
-- The application **must be served over HTTPS**; `http://localhost` is
-  allowed for development only.
-- The device running the app needs **Bluetooth available and enabled**.
-- Supported browsers: **Chrome (Desktop/Android), Edge (Desktop), Opera
-  (Desktop/Android)**. (Not Safari, not Firefox.) The HX02 tablet must run
-  one of the supported browsers — Chrome for Android is the natural choice.
-- Methods: **`connect()`**, **`disconnect()`**, **`startPayment()`**,
-  **`on()`**. `connect()` / `disconnect()` manage the Bluetooth link to the
-  reader directly from the browser.
-- `startPayment({ amount, currencyCode, currencySymbol })`:
-  - `amount`: charge amount **in cents**, e.g. Q20.00 → `2000`, Q35.00 →
-    `3500`.
-  - `currencyCode`: ISO 4217 **numeric** code — **GTQ = `"0320"`** for
-    Guatemala (also seen: `"0840"` for USD).
-  - `currencySymbol`: display symbol, e.g. `"Q"` or `"$"`.
-- **Events, subscribed via `on()`:** `connected`, `disconnected`,
-  `loading`, `transactionResult`, `error`, `status`.
-- **Status values** (carried by the `status` event): `searching`,
-  `connecting`, `connected`, `disconnected`, `waiting_for_card`,
-  `processing_payment`, `payment_success`, `payment_failed`,
-  `transaction_terminated`.
+- **Global class name is `CuboPagoSDK`** (`window.CuboPagoSDK`) — earlier
+  passes had guessed `CuboSDK`; that was wrong, now corrected everywhere
+  in this lab's code.
+- **Script tag**: `<script src="https://sdk.cubopago.com/pos/vX.Y.Z/cubo-pos-sdk-web.js"></script>`.
+  The demo repo's own three docs disagree on the current version — its
+  `.claude/skills/cubo-sdk-help/SKILL.md` says `v1.1.1`, its `README.md`
+  says `v1.10.0`, but its own `demo.html` (live, runnable code, the most
+  trustworthy of the three) pins `v1.11.0`. Confirm the current version
+  before shipping — don't assume any of these three numbers is still
+  current by the time this is read.
+- **npm package**: `cubo-pos-sdk-web`.
+- **Works only with the Cubo QPOS Cute** terminal model, over the
+  **Web Bluetooth API**.
+- **Init**: `new CuboPagoSDK({ apiKey, environment, enableMsi?, msiModal?, hasPrinter? })`.
+  - `apiKey` (string) and `environment` (string) are both required —
+    throws synchronously if either is missing.
+  - `environment` is one of the literal, **uppercase** strings
+    `'SANDBOX'` / `'PRODUCTION'` (two of the demo repo's docs also list
+    `'STG'` / `'DEV'`). This lab's own `machine.config.json` convention is
+    lowercase (`'sandbox'`) — `webSdkCuboAdapter.js` now upper-cases it at
+    the point of use, so the config file's convention doesn't need to
+    change.
+  - `enableMsi`, `msiModal`, `hasPrinter` are optional, all default to
+    values HX02 doesn't need to override (MSI/installments and receipt
+    printers are out of scope for HX02's flat BASIC/PREMIUM pricing) —
+    not passed by this lab's adapter.
+- **Requires a secure context**: HTTPS in production, `http://localhost`
+  for development only. Confirms the earlier HTTPS/localhost findings
+  below unchanged.
+- **Supported browsers**: Chrome 56+ (Desktop **and Android**), Edge 79+
+  (**Desktop only**), Opera 43+ (Desktop and Android). Not Safari, not
+  Firefox, on any platform.
+- **Public properties**: `isConnected` (boolean), `device`
+  (`BluetoothDevice | null`).
+- **Methods**: `connect(): Promise<string>` (resolves with the connected
+  device's name; requires a user gesture — must be called from a click
+  handler), `disconnect(): void`, `startPayment(params): Promise<void>`
+  (throws synchronously on validation errors), `cancelCurrentTransaction(): boolean`
+  (aborts the in-flight HTTP call for the current payment; not currently
+  wired into this lab's `CuboCardProvider`), `getDeviceInfo()`,
+  `getPosId()`, `getInstallments()`, `getInstallmentCalculation()`
+  (MSI-only, unused by HX02), `on(event, callback)`, `off(event, callback?)`,
+  `removeAllListeners()`.
+- **`startPayment({ amount, currencyCode, currencySymbol, monthlyInstallmentId? })`**:
+  - `amount`: a **string** of cents, e.g. `"2000"` for Q20.00 — not the
+    number `2000`. (This lab's earlier code passed a number; fixed in
+    `cuboCardProvider.js`.)
+  - `currencyCode`: ISO 4217 numeric code as a string — `"0320"` GTQ,
+    `"0840"` USD, `"0484"` MXN.
+  - `currencySymbol`: display string, e.g. `"Q"`, `"$"`.
+  - `monthlyInstallmentId`: MSI-only, unused by HX02.
+- **Events, subscribed via `on()`**: `connected`, `disconnected`, `status`,
+  `loading`, `transactionResult`, `error`, `installmentsLoaded`
+  (MSI-only).
+  - `connected` payload: `{ deviceName: string }`.
+  - `disconnected` payload: none.
+  - `status` payload: the status **string itself** (not wrapped in an
+    object). **Not a closed enum** — during automatic payment recovery the
+    SDK also emits free-form Spanish progress messages (e.g. *"Estamos
+    confirmando tu pago con el banco..."*) outside the named list below.
+    Named connection/verification/payment values: `searching`,
+    `connecting`, `connected`, `disconnected`, `verifying_pos`,
+    `preparing_pos_configuration`, `configuring_pos`,
+    `verification_failed`, `configuring_failed`, `waiting_for_card`,
+    `processing_payment`, `payment_success`, `payment_failed`,
+    `payment_pending`, `transaction_terminated`.
+    (Two of the demo repo's own docs — `llms.txt` and the Claude skill's
+    inline comments — abbreviate this to `'processing'` and omit
+    `transaction_terminated`; `README.md`'s full structured table is more
+    detailed and is what this lab follows. Worth reconciling if a future
+    pass finds the abbreviated version is actually the current behavior.)
+  - `loading` payload: boolean.
+  - **`transactionResult` payload — the shape that matters most**:
+    `{ success: boolean, data?: object, pending?: boolean, message?: string, error?: { type: string, message: string } }`.
+    This is a completely different shape from what this lab's code
+    guessed before this pass (`{ status: 'SUCCESS' | 'DECLINED' | ... }`
+    with `transactionId`/`referenceId`/`authorizationCode`/`readType`
+    fields) — none of those field names turned out to be real. The exact
+    internal shape of `data` on success is still not documented beyond
+    "the full API response" — see UNVERIFIED below.
+  - `error` payload: `{ type: string, message: string }`. Confirmed
+    `type` values: `not_connected`, `connection_failed`, `invalid_amount`,
+    `invalid_currency_code`, `invalid_currency_symbol`, `sdk_error`,
+    `transaction_declined`, `transaction_not_found`,
+    `recovery_in_progress`.
+- **Automatic payment recovery**: the SDK has its own built-in mechanism
+  for ambiguous network failures (timeout ~3 min, dropped connection,
+  gateway 502/503/504) — every payment carries an auto-generated
+  Idempotency Key so any retry the SDK performs internally can't double-
+  charge, and progressively polls transaction status (surfaced via
+  `status` event messages) while it does. If it still can't confirm the
+  outcome after recovering, the SDK emits a `transactionResult` with
+  `pending: true`. **Do not retry `startPayment()` automatically on
+  `pending: true`** — the docs are explicit that this risks a double
+  charge. This lab's
+  `cuboCardProvider.js` treats `pending: true` as fail-closed: no state
+  transition, `canStartCycle()` stays `false`, nothing is retried
+  automatically — see that file's comments for the exact reasoning.
 
-  Note the apparent overlap: `connected`/`disconnected` show up both as
-  their own discrete events *and* as values the `status` event can carry.
-  The exact relationship between the two (does `status` fire in parallel
-  with the discrete events, or only for states that have no dedicated
-  event?) isn't specified by what was reported — treat both as real and
-  worth listening to, without assuming how they interleave until a real
-  device is observed.
+## UNVERIFIED — still not found anywhere in the demo repo
 
-## UNVERIFIED — must be confirmed before touching real hardware
+- **The exact field names inside `transactionResult.data`** on success —
+  described only as "the full API response," no fields documented or
+  shown in example output. `mockCuboAdapter.js`'s placeholder
+  (`transactionId`, `amount`, `currencySymbol`, `timestamp`) is explicitly
+  not a claim about real field names.
+- **Whether/how the SDK relates to `api-payment-sandbox.cubopago.com`** —
+  the REST endpoint Cubo separately gave this project (matching the
+  naming pattern of the production REST API this project's HX01 audit
+  found powering HX01's QR flow, `api-payment-a.cubopago.com`). Nothing in
+  the demo repo — docs, demo app, or its own Claude skill — mentions that
+  hostname anywhere. The SDK is served from a different host
+  (`sdk.cubopago.com`) and appears to manage all backend communication
+  internally; this project's code has never needed to reference that REST
+  endpoint directly for the card flow, and nothing here assumes it does.
+- Whether the QPOS Cute needs any registration/pairing step in Cubo Admin
+  Sandbox (e.g. its serial number) before Bluetooth pairing succeeds.
+- Real device behavior in general — none of this has been run against
+  actual hardware yet. Everything above is confirmed against Cubo's own
+  documentation and example code, not against an observed real
+  transaction.
 
-Now narrower than before: event and status *names* are confirmed above.
-What's still open is their exact *payload shape*, and SDK distribution
-details nobody has reported yet:
+**Action needed:** the remaining items need either a real sandbox
+`connect()`/`startPayment()` run with the raw events logged, or a direct
+question to Cubo (see the machine owner's question list from the prior
+research round for `api-payment-sandbox.cubopago.com` specifically).
 
-- **The exact payload field names** inside `transactionResult` (transaction
-  ID, reference ID, authorization code, card read type) — not specified by
-  what was verified. The lab UI and mock adapter still use
-  `transactionId`, `referenceId`, `authorizationCode`, `readType` as
-  working assumptions only, clearly not to be treated as documented fact.
-- **The exact payload fields of the `error` event** — not specified.
-  `mockCuboAdapter.js`'s `{ code, message }` shape is a placeholder, not a
-  confirmed contract.
-- **The exact payload of the `status` event** (is the state in a `state`
-  field, a `status` field, something else? is there a timestamp, a
-  message?) — not specified.
-- The SDK's distribution: script tag URL / npm package name, and how it
-  attaches to the page (`window.CuboSDK` is still a guess in
-  `webSdkCuboAdapter.js`, marked as such).
-- The exact initialization call signature (still assumed
-  `new window.CuboSDK({ apiKey, environment })`).
-- Error codes and their meanings.
-- Sandbox vs. production behavioral differences beyond the `environment`
-  flag's existing.
+## How to activate `mode: real`
 
-**Action needed:** the same owner (or anyone with normal browser access)
-pulling up the official SDK repository/demo referenced from that docs page,
-or running one real `connect()`/`startPayment()` call against sandbox and
-recording the raw event payloads, is what would close these out. Until
-then `src/cubo/webSdkCuboAdapter.js` keeps its payload-shape assumptions
-clearly flagged as assumptions, not facts.
+Updated now that the SDK identity is confirmed — only the API key and a
+live-device check remain:
 
-Re-checked directly (this session): `WebFetch` and a raw `curl` through
-this environment's egress proxy both still get a policy-level `403` on
-`developers.cubopago.com` and `www.cubopago.com` — confirmed again across
-three different proxy ports as the session reconnected, so it's the
-network policy, not a transient failure. A search of the npm registry
-(`registry.npmjs.org`, which this environment *can* reach directly) for
-plausible package names (`cubo-web-sdk`, `cubopago`, `@cubopago/web-sdk`,
-`cubo-sdk-web`, `cubo-pos-sdk`) found nothing — weak supporting evidence
-(not proof) that the SDK is distributed only as a hosted `<script>` tag
-from Cubo's own domain, not an npm package. Nothing here was guessed into
-the CONFIRMED section above because of this.
-
-## How to activate `mode: real` (once Cubo's answer arrives)
-
-Everything except the actual script URL and the exact
-`transactionResult`/`error`/`status` payload shapes is already wired and
-waiting. `lab/lab.js`'s "Real Cubo Web SDK" radio option already routes
-through `PaymentProvider` → `CuboCardProvider` → `createWebSdkCuboAdapter`
-unchanged; it currently shows *"Cubo Web SDK script not loaded yet"* and
-keeps CONNECT POS disabled until `window.CuboSDK` exists on the page —
-that's expected, not a bug, and needs no code change to fix once the
-script is real. When the sandbox API key and SDK details come in:
-
-1. **Script tag** — replace the commented-out placeholder at the top of
-   `lab/lab.html` (search for `PENDING_OFFICIAL_CUBO_WEB_SDK_URL`) with the
-   real `<script src="...">` tag. Uncomment it.
-2. **Global / init call** — open `src/cubo/webSdkCuboAdapter.js` and fix
-   the two spots explicitly marked `WHICH IS A GUESS` in its header
-   comment and in `new window.CuboSDK({ apiKey, environment })`: the
-   actual global name (if not `window.CuboSDK`) and the actual constructor
-   signature.
-3. **Event/status payload shapes** — once a real `connect()` and
-   `startPayment()` have been run against sandbox (even once, logged
-   manually), update the UNVERIFIED section above to CONFIRMED, and fix
-   the field names `webSdkCuboAdapter.js` currently assumes
-   (`transactionId`, `referenceId`, `authorizationCode`, `readType`) to
-   match reality. `mockCuboAdapter.js` should keep using the same field
-   names afterward, so the lab UI doesn't need to change to read either
-   adapter.
+1. **Script tag** — uncomment the `<script src="https://sdk.cubopago.com/pos/v1.11.0/cubo-pos-sdk-web.js">`
+   tag at the top of `lab/lab.html`, double-checking the version number is
+   still current first (see the version discrepancy noted above).
+2. **Global / init call** — already fixed: `webSdkCuboAdapter.js` now uses
+   `window.CuboPagoSDK` and passes `environment` upper-cased. No further
+   guessing needed here.
+3. **`transactionResult.data` shape** — still a placeholder in the mock;
+   once a real `startPayment()` succeeds against sandbox, capture the real
+   `data` object and update both `mockCuboAdapter.js`'s placeholder and
+   this doc's UNVERIFIED section.
 4. **API key** — type it into the lab's "API Key" field at runtime (never
    committed), or put it in `machines/HX02/secrets.local.json` (gitignored,
-   copy from `secrets.example.json`). Either way it never goes in
-   `machine.config.json` or into a commit.
+   copy from `secrets.example.json`). Never in `machine.config.json`,
+   never in a commit.
 5. **First real test is `connect()` only** — select "Real Cubo Web SDK"
-   mode, connect the POS, confirm `CONNECTED` on screen. No `startPayment()`
-   yet. Only after that works, and only in `sandbox`, try a real
-   `startPayment()` — still no ESP32 involved (see `requestCycleStart()`,
-   still `Esp32NotImplementedError` by design).
-
-None of steps 1–3 should be done with placeholder/guessed values "to see
-if it works" — that's exactly the kind of invented data this lab has
-deliberately avoided so far.
+   mode, connect the POS, confirm `CONNECTED` on screen with a real
+   `deviceName`. No `startPayment()` yet. Only after that works, and only
+   in `SANDBOX`, try a real `startPayment()` — still no ESP32 involved
+   (see `requestCycleStart()`, still `Esp32NotImplementedError` by
+   design).
 
 ## HTTPS / localhost
 
-The brief asked to investigate how FreshTouch HX02 is currently served.
-Findings:
+Unchanged from earlier research, now doubly confirmed by the demo repo's
+own prerequisites section:
 
 1. **HX02 doesn't have a deployed app yet** — this lab is the first HX02
    code to exist. There's nothing running in production to inspect.
 2. **HX01** (the sibling machine, for context only — not modified) has no
    CI/deploy config, `CNAME`, or hosting manifest checked into its repo, so
-   its hosting setup isn't discoverable from the repository alone. It may
-   be served by GitHub Pages configured outside the repo, a static host, or
-   opened directly as local files — undetermined from here.
+   its hosting setup isn't discoverable from the repository alone.
 3. **For this lab today**: serve `freshtouch-hx02-cubo-lab/` over
-   `http://localhost:<port>` (e.g. `python3 -m http.server`). Per Cubo's
-   documented requirement, `localhost` satisfies the secure-context rule
-   for development, so this is sufficient for all Phase 1 testing —
-   including with a real tablet, as long as the tablet's browser loads the
-   page from `localhost` on that same device (not from another machine's
-   IP over plain HTTP).
+   `http://localhost:<port>` (e.g. `python3 -m http.server`, or the demo
+   repo's own suggestion, `npx serve .`). `localhost` satisfies the
+   secure-context rule for development — sufficient for all Phase 1
+   testing, including with a real tablet, as long as the tablet's browser
+   loads the page from `localhost` on that same device.
 4. **For a real tablet in the field** (not localhost), HTTPS is required.
    Recommended, in order of effort: (a) a static host that provides HTTPS
    automatically (GitHub Pages, Netlify, Vercel) if HX02 will be served
    remotely; (b) a local HTTPS dev certificate (e.g. via `mkcert`) if HX02
-   must run fully offline from a local server. No insecure workaround
-   (e.g. disabling the secure-context requirement) was implemented or is
-   recommended — the SDK requires a real secure context outside of
-   `localhost`, so there's no way around this trade-off.
+   must run fully offline from a local server. No insecure workaround was
+   implemented or is recommended.
 5. This decision needs to be made deliberately once it's known how HX02
    will actually be deployed (offline kiosk vs. hosted) — not assumed here.
 
 ## Pending information from Cubo
 
-These fields are required before any real (even sandbox) test can run, and
-none were invented:
-
 | Field | Status |
 |---|---|
 | `CUBO_ACCOUNT` | Pending |
 | `CUBO_MERCHANT_ID` | Pending |
-| `CUBO_API_KEY_SANDBOX` | Pending |
+| `CUBO_API_KEY_SANDBOX` | Cubo Admin Sandbox is now enabled to generate it — not yet generated/entered anywhere in this repo |
 | `CUBO_API_KEY_PRODUCTION` | Pending — do not request until sandbox is proven |
-| `POS_MODEL` | Assumed QPOS Cute per the brief; confirm serial when hardware is assigned |
+| `POS_MODEL` | Confirmed QPOS Cute |
 | `POS_SERIAL` | Pending |
 | `POS_ID` | Pending |
-| `SANDBOX_ENABLED` | Pending — known channel: request sandbox access through Cubo's contact center, then generate the key in Cubo Admin |
+| `SANDBOX_ENABLED` | **Confirmed enabled** by Cubo |
 | `PRODUCTION_APPROVED` | Not applicable yet — Phase 1 only |
-| `CUBO_CONTACT` | Pending — need the actual contact center channel (phone/email/form) |
-| `CUBO_REQUIREMENTS` | Pending — ask Cubo directly whether a merchant/KYC step is needed before sandbox keys are issued |
+| `CUBO_CONTACT` | Have a working channel (sandbox was approved through it) |
+| `CUBO_REQUIREMENTS` | Sandbox approved with no blocking requirement reported so far |
+| `api-payment-sandbox.cubopago.com` role | Given by Cubo; not referenced anywhere in the SDK demo repo — see UNVERIFIED above |
 
 Track these in `machines/HX02/machine.config.json` (non-secret fields) and
 `machines/HX02/secrets.local.json` (gitignored, secret fields — copy from
@@ -205,15 +243,18 @@ system can be built and tested without real credentials.
 `createCuboAdapter({ mode: 'mock' | 'web-sdk', machineConfig, apiKey })`,
 returning `{ connect, disconnect, startPayment, on }` either way. The rest
 of the app (state machine, UI, ESP32 guard) only ever talks to that shape,
-so swapping the mock for the real SDK — once the UNVERIFIED items above are
-resolved — should not require touching anything outside
+so swapping the mock for the real SDK — now that the SDK's own identity is
+confirmed — should not require touching anything outside
 `src/cubo/webSdkCuboAdapter.js`.
 
 One layer up, `src/payment/cuboCardProvider.js` wraps this adapter plus the
 payment state machine into the `PaymentProvider` shape shared with (future)
 other payment methods — see
 `.claude/skills/hydrox-payment-architecture/SKILL.md` for that architecture.
-It does not change anything documented above; it only adds wiring on top.
+This is also where the real `transactionResult` shape gets interpreted
+into state-machine events (see `interpretTransactionResult()` in that
+file) — the adapters themselves (mock and real) pass the raw shape through
+unmodified.
 
 ## ESP32 (Phase 2, not started)
 

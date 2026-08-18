@@ -1,11 +1,11 @@
 # Test Plan
 
-## Automated (run: `npm test`, no dependencies, 39 tests today)
+## Automated (run: `npm test`, no dependencies, 53 tests today)
 
 ### Payment state machine — `tests/paymentStateMachine.test.js`
 - Happy path IDLE → ... → PAYMENT_SUCCESS reaches `canStartCycle() === true`.
-- Declined, cancelled, and timeout paths reach their respective terminal
-  states and never `PAYMENT_SUCCESS`.
+- Declined and cancelled paths reach their respective terminal states and
+  never `PAYMENT_SUCCESS`.
 - Invalid transitions throw instead of silently changing state.
 - Terminal non-success states can `RESET` back to `IDLE`.
 - `canStartCycle(state)` is exhaustively checked against every state in the
@@ -25,38 +25,75 @@ a refusal) for `PAYMENT_SUCCESS`.
 
 ### Mock Cubo adapter — `tests/mockCuboAdapter.test.js`
 POS lifecycle:
-- `connect()` emits `connected`, flips `isConnected()` to true.
-- `disconnect()` emits `disconnected`, flips it back to false.
+- `connect()` emits `connected` with `{ deviceName }`, flips
+  `isConnected()` to true.
+- `disconnect()` emits `disconnected` (no payload), flips it back to false.
 - `startPayment()` before `connect()` rejects (POS not connected / not
   found case).
 
 Payment outcomes — one test per outcome, asserting the emitted
-`transactionResult.status` matches:
-`SUCCESS`, `DECLINED`, `CANCELLED`, `ERROR`, `TIMEOUT`.
+`transactionResult` matches the real, confirmed shape
+(`{ success, data?, pending?, message?, error?: {type, message} }`) for:
+`SUCCESS`, `DECLINED` (`error.type === 'transaction_declined'`), `PENDING`
+(`pending: true`, no `error`), `ERROR` (`error.type === 'sdk_error'`).
+`DECLINED`/`ERROR` also emit a standalone `error` event with the same
+`{ type, message }`.
 
 Data hygiene:
 - A `SUCCESS` result's keys never include anything matching
   `card|pan|cvv|pin`.
 
+### CuboCardProvider — `tests/cuboCardProvider.test.js`
+- Full happy path through `PaymentProvider`: `selectService` →
+  `connectPos` → `createPayment` → `PAYMENT_SUCCESS` → `canStartCycle()`
+  true → `requestCycle()` passes the guard.
+- `DECLINED` / `ERROR`: `canStartCycle()` stays false, `requestCycle()`
+  refuses.
+- **`PENDING`: does not transition the session at all, `canStartCycle()`
+  stays false, `requestCycle()` refuses, and nothing is retried
+  automatically** — this is the case the real SDK's own docs call out as
+  the one most likely to cause a double charge if handled wrong.
+- Calling `connectPos()`/`createPayment()` out of order throws.
+- Disconnecting mid-flow lands in `PAYMENT_ERROR`, not authorized.
+- Local `cancelPayment()` mid-flow lands in `PAYMENT_CANCELLED`, not
+  authorized; a late result arriving after cancellation is correctly
+  rejected by the state machine (not silently accepted).
+- `onResult()` unsubscribe stops further notifications.
+
+### CuboQRProvider — `tests/cuboQRProvider.test.js`
+- Confirms the QR provider is inert: calling it (directly or via
+  `createPaymentProvider({type:'qr'})`) always throws and performs no
+  work — no network calls, no state changes.
+
 ## Manual — lab UI (`lab/lab.html`, simulated mode, no hardware needed)
 
-- [ ] Page loads over `http://localhost:<port>/lab/lab.html` with no
+Verified in a real headless-Chromium run (Playwright), not just by
+inspection — see git history for the exact scripted runs.
+
+- [x] Page loads over `http://localhost:<port>/lab/lab.html` with no
       console errors.
-- [ ] Machine config for HX02 loads; BASIC/PREMIUM buttons show the
+- [x] Machine config for HX02 loads; BASIC/PREMIUM buttons show the
       configured prices.
-- [ ] Selecting a service highlights it and advances the payment status
+- [x] Selecting a service highlights it and advances the payment status
       display.
-- [ ] "CONNECT POS" transitions POS status to Connected and payment status
+- [x] "CONNECT POS" transitions POS status to Connected and payment status
       to `POS_CONNECTED`.
-- [ ] "TEST PAYMENT" with simulated outcome `SUCCESS` shows transaction
-      ID, reference ID, authorization code, read type and timestamp, and
-      the log panel shows the ESP32 guard passing (not-implemented stub).
-- [ ] "TEST PAYMENT" with each of `DECLINED` / `CANCELLED` / `ERROR` /
-      `TIMEOUT` shows the matching transaction status and the log panel
-      shows the ESP32 guard **refusing** — never the not-implemented stub.
-- [ ] "RESET" clears the result panel and returns payment status to
+- [x] "TEST PAYMENT" with simulated outcome `SUCCESS` shows `SUCCESS`,
+      a transaction ID (from `result.data`, mock-only), and "Cycle
+      authorization: AUTHORIZED"; the log panel shows the ESP32 guard
+      passing (not-implemented stub).
+- [x] "TEST PAYMENT" with each of `DECLINED` / `PENDING` / `ERROR` shows
+      the matching status/message and "Cycle authorization: NOT
+      AUTHORIZED" — never AUTHORIZED, never the not-implemented stub log
+      line.
+- [x] "DISCONNECT POS" mid-flow (after connecting, before payment) lands
+      on `PAYMENT_ERROR`, NOT AUTHORIZED.
+- [x] Switching to "Real Cubo Web SDK" mode without the script loaded
+      shows "script not loaded yet", disables CONNECT POS, and does not
+      crash; switching back to mock fully recovers.
+- [x] "RESET" clears the result panel and returns payment status to
       `IDLE`.
-- [ ] No card number, CVV, PIN, or API key ever appears in the on-screen
+- [x] No card number, CVV, PIN, or API key ever appears in the on-screen
       log panel or the browser console.
 
 ## Manual — real hardware (cannot be performed from this environment; checklist for whoever has the tablet + POS + credentials)
@@ -67,26 +104,30 @@ POS:
 - [ ] Tablet Bluetooth off — `Bluetooth` status shows OFF/unavailable
       before attempting connect.
 - [ ] POS powered on, in range, Bluetooth on — POS is found and reaches
-      `CONNECTED`.
+      `CONNECTED` with a real `deviceName`.
 - [ ] POS out of range / not discoverable — connect attempt fails
       cleanly, state machine reaches `PAYMENT_ERROR`, no crash.
 - [ ] Disconnect mid-session (POS powered off after connecting) —
       `disconnected` event observed, UI reflects it.
 
-Payment (real card, sandbox environment, small test amount):
-- [ ] Successful tap/insert/swipe → `transactionResult.status === SUCCESS`
-      → screen shows transaction ID, reference ID, auth code.
-- [ ] Declined card → `DECLINED`, no cycle-start attempt.
-- [ ] Customer cancels on the POS screen → `CANCELLED`, no cycle-start
-      attempt.
-- [ ] No response from POS within a reasonable window → `TIMEOUT`, no
+Payment (real card, `SANDBOX` environment, small test amount):
+- [ ] Successful tap/insert/swipe → `transactionResult.success === true`
+      → screen shows whatever `result.data` actually contains (record the
+      real field names here and update `CUBO-INTEGRATION.md`'s UNVERIFIED
+      section and `mockCuboAdapter.js`'s placeholder once observed).
+- [ ] Declined card → `error.type === 'transaction_declined'`, no
       cycle-start attempt.
-- [ ] Network/Bluetooth error mid-transaction → `ERROR`, no cycle-start
-      attempt.
-- [ ] Unsupported card → SDK's specific error surfaces without crashing
-      the page.
+- [ ] Ambiguous/network failure during payment → observe whether
+      `pending: true` actually arrives as documented, and what
+      `result.message` says — no cycle-start attempt, no automatic retry.
+- [ ] Unsupported card / other SDK error → surfaces without crashing the
+      page.
+- [ ] Confirm whether `cancelCurrentTransaction()` produces a
+      `transactionResult`, an `error`, both, or neither — currently
+      UNVERIFIED and not wired into `CuboCardProvider.cancelPayment()`.
 
-Before this checklist can run, confirm the UNVERIFIED items in
-`CUBO-INTEGRATION.md` (exact event names/payloads) against the live docs —
-otherwise `webSdkCuboAdapter.js`'s event wiring may not match reality and
-this checklist would be testing guesses.
+Before this checklist can run, generate a real sandbox API key in Cubo
+Admin Sandbox and confirm the current SDK script version (see
+`CUBO-INTEGRATION.md`) — the SDK identity and shapes are now confirmed
+against Cubo's official demo repo, but none of it has been run against
+real hardware yet.

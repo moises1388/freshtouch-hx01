@@ -98,6 +98,7 @@ body {
 }
 .result-grid dt { color: var(--muted); font-size: 0.8rem; }
 .result-grid dd { margin: 0; font-family: "Share Tech Mono", monospace; word-break: break-all; }
+.footnote { font-size: 0.72rem; color: var(--muted); margin: 10px 0 0; }
 
 .log-output {
   background: #0b1218;

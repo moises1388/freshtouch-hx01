@@ -3,13 +3,22 @@
 // This lab environment has no physical tablet, no Bluetooth, and no real
 // Cubo credentials, so real-hardware testing cannot happen from here. This
 // mock lets the rest of the stack (state machine, UI, ESP32 guard, logging)
-// be built and tested end-to-end today. It emits a subset of the real SDK's
-// confirmed event names (see cuboEvents.js / CUBO-INTEGRATION.md):
-// 'connected', 'disconnected', 'transactionResult', 'error'. It does not
-// emit 'loading' or 'status' — those exist on the real SDK but their
-// payload shapes aren't confirmed yet, so nothing here guesses at them.
+// be built and tested end-to-end today.
+//
+// Event names and the transactionResult shape mirror what's CONFIRMED
+// against Cubo's official demo repo (github.com/Cubo-App/cubo-pos-sdk-web-demo,
+// cloned and read directly — see CUBO-INTEGRATION.md and
+// webSdkCuboAdapter.js for the full citation). Earlier versions of this
+// file emitted a guessed shape ({ status: 'SUCCESS', transactionId,
+// readType, ... }) before that source was available — none of those
+// field names turned out to be real. transactionResult.data's own
+// internal shape on success is still UNVERIFIED (the demo repo only
+// describes it as "the full API response"), so the mock's `data` object
+// below is a placeholder for the lab's own display purposes, not a claim
+// about real field names.
 
 import { log } from '../logger.js';
+import { CUBO_ERROR_TYPES } from './cuboEvents.js';
 
 export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 }) {
   const listeners = new Map();
@@ -32,22 +41,26 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
     await delay(simulatedLatencyMs);
     connected = true;
     log(machineConfig.machineId, 'POS connected (simulated)');
-    emit('connected', { simulated: true, posId: machineConfig.cuboPosId });
+    // Real shape confirmed: { deviceName }
+    emit('connected', { deviceName: `Simulated QPOS Cute (${machineConfig.cuboPosId || 'mock'})` });
   }
 
   async function disconnect() {
     connected = false;
     log(machineConfig.machineId, 'POS disconnected (simulated)');
-    emit('disconnected', { simulated: true });
+    emit('disconnected', undefined); // real 'disconnected' carries no payload
   }
 
   /**
-   * @param {{amount:number, currencyCode:string, currencySymbol:string, outcome?:'SUCCESS'|'DECLINED'|'CANCELLED'|'ERROR'|'TIMEOUT'|'TRANSACTION_TERMINATED'}} params
+   * @param {{amount:string, currencyCode:string, currencySymbol:string, outcome?:'SUCCESS'|'DECLINED'|'PENDING'|'ERROR'}} params
    *   `outcome` is a lab-only override to exercise every result path; the
-   *   real SDK obviously has no such parameter. TRANSACTION_TERMINATED
-   *   mirrors the status value named in the official docs (see
-   *   cuboEvents.js) — its real transactionResult.status spelling is
-   *   UNVERIFIED, this is a placeholder for exercising "not success" paths.
+   *   real SDK obviously has no such parameter. Outcomes were narrowed
+   *   from an earlier, guessed set (SUCCESS/DECLINED/CANCELLED/ERROR/
+   *   TIMEOUT/TRANSACTION_TERMINATED) to match what transactionResult can
+   *   actually carry now that it's confirmed: success, pending, or a
+   *   { type, message } error. Local cancellation (cancelPayment()) and
+   *   POS disconnection are separate flows, not transactionResult outcomes
+   *   — see cuboCardProvider.js.
    */
   async function startPayment({ amount, currencyCode, currencySymbol, outcome = 'SUCCESS' }) {
     if (!connected) {
@@ -61,48 +74,51 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
 
     await delay(simulatedLatencyMs);
     log(machineConfig.machineId, 'Waiting for card (simulated)');
-
-    if (outcome === 'CANCELLED') {
-      emit('transactionResult', { status: 'CANCELLED', timestamp: nowIso() });
-      return;
-    }
-    if (outcome === 'TIMEOUT') {
-      emit('transactionResult', { status: 'TIMEOUT', timestamp: nowIso() });
-      return;
-    }
-    if (outcome === 'TRANSACTION_TERMINATED') {
-      emit('transactionResult', { status: 'TRANSACTION_TERMINATED', timestamp: nowIso() });
-      return;
-    }
-
     await delay(simulatedLatencyMs);
-    const readType = outcome === 'ERROR' ? undefined : 'NFC';
-    if (readType) log(machineConfig.machineId, 'Card detected (simulated)', { readType });
-
-    log(machineConfig.machineId, 'Processing (simulated)');
+    log(machineConfig.machineId, 'Processing payment (simulated)');
     await delay(simulatedLatencyMs);
 
-    if (outcome === 'ERROR') {
-      emit('error', { code: 'MOCK_READ_ERROR', message: 'Simulated read error' });
-      emit('transactionResult', { status: 'ERROR', timestamp: nowIso() });
+    if (outcome === 'PENDING') {
+      // Confirmed shape: no `data`, no `error` — success is falsy, pending
+      // is true, message is the user-facing text to show.
+      log(machineConfig.machineId, 'Payment PENDING (simulated) — ambiguous, do not retry');
+      emit('transactionResult', {
+        success: false,
+        pending: true,
+        message: 'Simulated: no se pudo confirmar el pago con el banco (mock).',
+      });
       return;
     }
 
     if (outcome === 'DECLINED') {
-      emit('transactionResult', { status: 'DECLINED', readType, timestamp: nowIso() });
+      const errorPayload = {
+        type: CUBO_ERROR_TYPES.TRANSACTION_DECLINED,
+        message: 'Simulated: transacción rechazada por el banco (mock).',
+      };
+      log(machineConfig.machineId, 'Payment DECLINED (simulated)');
+      emit('error', errorPayload);
+      emit('transactionResult', { success: false, error: errorPayload });
+      return;
+    }
+
+    if (outcome === 'ERROR') {
+      const errorPayload = { type: CUBO_ERROR_TYPES.SDK_ERROR, message: 'Simulated SDK error (mock).' };
+      log(machineConfig.machineId, 'Payment ERROR (simulated)');
+      emit('error', errorPayload);
+      emit('transactionResult', { success: false, error: errorPayload });
       return;
     }
 
     log(machineConfig.machineId, 'Payment SUCCESS (simulated)');
     emit('transactionResult', {
-      status: 'SUCCESS',
-      readType,
-      transactionId: `MOCK-TXN-${Date.now()}`,
-      referenceId: `MOCK-REF-${Date.now()}`,
-      authorizationCode: `${Math.floor(100000 + Math.random() * 900000)}`,
-      amount,
-      currencySymbol,
-      timestamp: nowIso(),
+      success: true,
+      // Placeholder only — real field names inside `data` are UNVERIFIED.
+      data: {
+        transactionId: `MOCK-TXN-${Date.now()}`,
+        amount,
+        currencySymbol,
+        timestamp: nowIso(),
+      },
     });
   }
 

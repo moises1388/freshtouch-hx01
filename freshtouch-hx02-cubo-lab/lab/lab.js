@@ -54,9 +54,7 @@ function currentMockOutcome() {
 }
 
 function resetResultPanel() {
-  ['r-transaction', 'r-txn-id', 'r-ref-id', 'r-auth-code', 'r-read-type', 'r-timestamp'].forEach((id) =>
-    setStatus(id, '—')
-  );
+  ['r-transaction', 'r-message', 'r-txn-id'].forEach((id) => setStatus(id, '—'));
 }
 
 function renderButtons() {
@@ -120,14 +118,19 @@ function handleProviderEvent(snapshot) {
     case 'card_detected':
       setStatus('r-transaction', 'PROCESSING_PAYMENT');
       break;
+    case 'payment_pending':
+      // Confirmed real shape: { success:false, pending:true, message }.
+      // Fail-closed by design — see cuboCardProvider.js. Never authorize,
+      // never auto-retry from here.
+      setStatus('r-transaction', 'PENDING (do not retry)');
+      setStatus('r-message', snapshot.message || '—');
+      break;
     case CUBO_EVENTS.TRANSACTION_RESULT: {
+      // Confirmed real shape: { success, data?, error?: {type, message} }
       const result = snapshot.result;
-      setStatus('r-transaction', result.status);
-      setStatus('r-txn-id', result.transactionId || '—');
-      setStatus('r-ref-id', result.referenceId || '—');
-      setStatus('r-auth-code', result.authorizationCode || '—');
-      setStatus('r-read-type', result.readType || '—');
-      setStatus('r-timestamp', result.timestamp || '—');
+      setStatus('r-transaction', result.success ? 'SUCCESS' : result.error?.type || 'UNKNOWN');
+      setStatus('r-message', result.error?.message || '—');
+      setStatus('r-txn-id', result.data?.transactionId || '—');
       break;
     }
     default:
@@ -139,7 +142,7 @@ function handleProviderEvent(snapshot) {
 }
 
 // createPaymentProvider({mode:'web-sdk', ...}) throws synchronously when
-// window.CuboSDK isn't present (see webSdkCuboAdapter.js) — expected and
+// window.CuboPagoSDK isn't present (see webSdkCuboAdapter.js) — expected and
 // correct until the real script is loaded. Catch it here so switching to
 // "Real Cubo Web SDK" mode leaves the lab in a clear "not ready yet" state
 // instead of crashing mid-reset.
@@ -248,7 +251,7 @@ function updateSdkReadiness() {
     el('connect-btn').disabled = false;
     return;
   }
-  const loaded = typeof window.CuboSDK !== 'undefined';
+  const loaded = typeof window.CuboPagoSDK !== 'undefined';
   sdkStatusEl.textContent = loaded
     ? 'Cubo Web SDK script detected on this page.'
     : 'Cubo Web SDK script not loaded yet — see CUBO-INTEGRATION.md ("How to activate mode: real"). CONNECT POS is disabled until it is.';

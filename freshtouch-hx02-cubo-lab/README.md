@@ -31,17 +31,20 @@ It is **not** a working Bluetooth/hardware integration yet, because this
 development environment has none of what real-hardware testing needs:
 
 - No physical tablet, no Bluetooth radio.
-- No real Cubo account, sandbox API key, or POS serial (see
+- No sandbox API key entered anywhere yet, and no POS serial (see
   [`CUBO-INTEGRATION.md`](./CUBO-INTEGRATION.md) for the exact list of
-  pending fields).
-- No way to reach `developers.cubopago.com` directly from this container to
-  do a final line-by-line check of the SDK reference (network egress to
-  that domain is blocked here; see below).
+  still-pending fields — Cubo has approved Sandbox access).
+- `developers.cubopago.com` itself is still unreachable from this
+  container (network egress to that domain is blocked here), but Cubo's
+  official demo repo — `github.com/Cubo-App/cubo-pos-sdk-web-demo` — is
+  reachable and was cloned and read directly, which resolved almost
+  everything that page would have.
 
 So the lab ships with a **mock Cubo adapter** that simulates the whole
-`connect → startPayment → transactionResult` flow, and a **real adapter
-stub** wired to the same interface, ready for someone with a tablet, Chrome,
-Bluetooth and real credentials to point at hardware.
+`connect → startPayment → transactionResult` flow using the real,
+confirmed `CuboPagoSDK` shapes, and a **real adapter** wired to the same
+interface (`window.CuboPagoSDK`), ready for someone with a tablet, Chrome,
+Bluetooth and a real sandbox API key to point at hardware.
 
 ## Structure
 
@@ -80,9 +83,9 @@ is a deliberately inert stub documenting QR's future shape from HX01's real,
 audited flow, without connecting to anything. See
 `.claude/skills/hydrox-payment-architecture/SKILL.md` for the full
 architecture, security rules, and the process for extending it to a new
-payment method or a new machine (HX03, HX04, ...). `lab/lab.js` still talks
-directly to the lower-level adapter/state-machine (not yet through
-`PaymentProvider`) — that rewiring is a deliberate follow-up, not done here.
+payment method or a new machine (HX03, HX04, ...). `lab/lab.js` talks only
+to `PaymentProvider` — it has no direct import of the Cubo adapter or the
+state machine.
 
 ## Running the lab UI
 
@@ -96,10 +99,14 @@ python3 -m http.server 8080
 ```
 
 By default the page uses the **Simulated** adapter mode — no hardware, no
-API key, no network calls. Switch to **Real Cubo Web SDK** mode only once
-the official `<script>` tag is added to `lab/lab.html` (see
-`CUBO-INTEGRATION.md`) and a sandbox API key is available; the key is typed
-into a password field at runtime and is never written to disk or logged.
+API key, no network calls. Switch to **Real Cubo Web SDK** mode once the
+official `<script src="https://sdk.cubopago.com/pos/vX.Y.Z/cubo-pos-sdk-web.js">`
+tag (commented out at the top of `lab/lab.html`, version to be
+double-checked — see `CUBO-INTEGRATION.md`) is uncommented and a sandbox
+API key is available; the key is typed into a password field at runtime
+and is never written to disk or logged. Until the script is loaded, the
+page shows *"script not loaded yet"* and keeps CONNECT POS disabled rather
+than letting a click fail after the fact.
 
 ## Running the tests
 
@@ -108,23 +115,25 @@ cd freshtouch-hx02-cubo-lab
 npm test    # node --test — no dependencies to install
 ```
 
-55 unit tests cover the payment state machine, the ESP32 safety guard, the
-mock Cubo adapter, and the `CuboCardProvider`/`CuboQRProvider` layer. See
-`TEST-PLAN.md` for the full matrix, including the manual hardware checklist
-that can't be automated from here.
+53 unit tests cover the payment state machine, the ESP32 safety guard, the
+mock Cubo adapter (emitting the real, confirmed `transactionResult` shape),
+and the `CuboCardProvider`/`CuboQRProvider` layer — including that
+`pending: true` never authorizes a cycle and never gets retried
+automatically. See `TEST-PLAN.md` for the full matrix, including the
+manual hardware checklist that can't be automated from here.
 
 ## Status against the phase-1 checklist
 
 | # | Goal | Status |
 |---|------|--------|
 | 1 | FreshTouch page loads | ✅ `lab/lab.html` loads and renders the test screen |
-| 2 | Cubo SDK Web initializes | ⏳ Adapter interface ready; real SDK script/init call unverified (no live docs access, no credentials) |
+| 2 | Cubo SDK Web initializes | ⏳ SDK identity, script URL pattern, and init call CONFIRMED (Cubo's official demo repo); untested against a real script/device (no credentials/hardware here) |
 | 3 | Tablet detects POS | ❌ Needs real hardware, not available here |
 | 4 | Tablet connects via Bluetooth | ❌ Needs real hardware |
 | 5 | POS state CONNECTED | ✅ Simulated; ❌ real |
-| 6 | Send test amount | ✅ Simulated; ⏳ real (parameter shape confirmed, untested) |
+| 6 | Send test amount | ✅ Simulated with the real, confirmed parameter shapes; ❌ real |
 | 7 | Cubo requests card | ✅ Simulated only |
-| 8 | Result received | ✅ Simulated only |
+| 8 | Result received | ✅ Simulated, using the real, confirmed `transactionResult` shape (`success`/`data`/`pending`/`error`) |
 | 9 | Result shown on screen | ✅ Working in the lab UI |
 | 10 | Local debug info logged | ✅ Sensitive-safe logger + on-screen log panel |
 
@@ -133,10 +142,12 @@ this table is the short version.
 
 ## Next steps (do not start automatically)
 
-1. Get the pending Cubo fields filled in (`CUBO-INTEGRATION.md`).
-2. Verify the exact SDK script URL, init call and event names against
-   `https://developers.cubopago.com/sdks/web-sdk` from an ordinary browser.
-3. Run this lab on the real HX02 tablet with Bluetooth and a sandbox POS.
+1. Generate the sandbox API key in Cubo Admin Sandbox (approved, not yet
+   generated/entered anywhere in this repo).
+2. Confirm the current SDK script version (the demo repo's own docs
+   disagree — see `CUBO-INTEGRATION.md`) and uncomment the script tag.
+3. Run this lab on the real HX02 tablet with Bluetooth and a sandbox POS —
+   `connect()` only, first, before any real `startPayment()`.
 4. Only after a real `PAYMENT_SUCCESS` is observed end-to-end: design the
    `PAYMENT_SUCCESS → ESP32 → start cycle` protocol — a separate,
    explicitly-approved step, and never against HX01.

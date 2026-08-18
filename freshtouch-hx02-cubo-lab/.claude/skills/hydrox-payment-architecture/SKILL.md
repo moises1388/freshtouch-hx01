@@ -196,10 +196,13 @@ exercise the full state space without hardware:
 
 - POS lifecycle: connect, disconnect (before/after payment), connect
   failure.
-- Every payment outcome the real SDK is known to name (see
-  `src/cubo/cuboEvents.js` — `SUCCESS`/`DECLINED`/`CANCELLED`/`ERROR`/
-  `TIMEOUT`/`TRANSACTION_TERMINATED`), asserting `canStartCycle()` is
-  `false` for all but `SUCCESS`.
+- Every shape the real `transactionResult` is confirmed to take
+  (`{success:true, data}`, a decline or SDK error via `{success:false,
+  error:{type, message}}`, and — the one that most needs a dedicated test
+  — `{success:false, pending:true, message}`), asserting `canStartCycle()`
+  is `false` for every one of them except plain success, and that
+  `pending: true` never transitions and never triggers a retry (see
+  `interpretTransactionResult()` in `cuboCardProvider.js`).
 - `requestCycle()` from every non-success state refuses; from
   `PAYMENT_SUCCESS` it passes the guard (see
   `tests/cuboCardProvider.test.js` and `tests/security.test.js` for the
@@ -269,10 +272,13 @@ never committed (typed into a runtime field or loaded from
 
 ## Known open questions (check before trusting this doc blindly)
 
-- The exact payload shapes of the real Cubo Web SDK's `transactionResult`,
-  `error`, and `status` events are still UNVERIFIED — see
-  `CUBO-INTEGRATION.md` for the current CONFIRMED/UNVERIFIED split before
-  wiring real hardware.
+- The SDK's identity and `transactionResult`/`error`/`status` shapes are
+  now CONFIRMED against Cubo's official demo repo
+  (`github.com/Cubo-App/cubo-pos-sdk-web-demo`) — see `CUBO-INTEGRATION.md`
+  for the full breakdown. What's still open: the exact field names inside
+  `transactionResult.data` on success, and whether/how the SDK relates to
+  the separate `api-payment-sandbox.cubopago.com` REST endpoint Cubo gave
+  this project (nothing in the demo repo mentions it).
 - Whether HX01's Make-side "payment marked used" step exists somewhere
   this audit didn't reach, and whether HX01's webhook token is actually
   validated server-side, are both open findings from the HX01 audit — not

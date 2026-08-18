@@ -16,25 +16,39 @@
 // the same card flow. lab/lab.js is untouched for now — wiring it to this
 // provider is a follow-up, not done speculatively in this pass.
 
-import { createCuboAdapter, CUBO_CURRENCY_ISO4217, CUBO_EVENTS } from '../cubo/cuboAdapter.js';
+import { createCuboAdapter, CUBO_CURRENCY_ISO4217, CUBO_EVENTS, CUBO_ERROR_TYPES } from '../cubo/cuboAdapter.js';
 import { createPaymentSession, STATES, canStartCycle } from './paymentStateMachine.js';
 import { requestCycleStart, Esp32NotImplementedError } from '../esp32/esp32Interface.js';
 import { log } from '../logger.js';
 
-// transactionResult.status -> state machine event. Deliberately partial:
-// a status with no entry here does NOT transition the session at all, so
-// it can never be mistaken for success. This is the same fail-closed
-// choice already used in lab/lab.js, now shared in one place. The exact
-// set of statuses the real transactionResult can carry is still
-// UNVERIFIED (see CUBO-INTEGRATION.md) — hitting an unmapped value here is
-// expected with the real SDK, not just a test artifact.
-const RESULT_STATUS_TO_EVENT = Object.freeze({
-  SUCCESS: 'SUCCESS',
-  DECLINED: 'DECLINED',
-  CANCELLED: 'CANCEL',
-  ERROR: 'ERROR',
-  TIMEOUT: 'TIMEOUT',
-});
+// Interprets a real transactionResult payload, CONFIRMED shape (see
+// webSdkCuboAdapter.js / CUBO-INTEGRATION.md — sourced from Cubo's own
+// official demo repo, not guessed):
+//   { success: boolean, data?: object, pending?: boolean, message?: string,
+//     error?: { type: string, message: string } }
+//
+// Returns the state-machine event to send, or null to send nothing at
+// all (fail-closed: the session stays exactly where it was, which is
+// never PAYMENT_SUCCESS, so canStartCycle() stays false).
+//
+// `pending: true` is the important case this function exists to get
+// right: the SDK could not confirm whether the charge went through, and
+// its own docs are explicit that retrying automatically risks a double
+// charge (the SDK already has its own idempotency-key-based recovery
+// mechanism internally — this code must not layer a second retry on top
+// of it). So pending returns null on purpose: no transition, no
+// automatic retry, canStartCycle() stays false. The caller is only ever
+// told via the 'payment_pending' notification (see below) so the UI can
+// show result.message and require an explicit human decision.
+function interpretTransactionResult(result) {
+  if (result.pending) return null;
+  if (result.success) return 'SUCCESS';
+  if (result.error?.type === CUBO_ERROR_TYPES.TRANSACTION_DECLINED) return 'DECLINED';
+  if (result.error) return 'ERROR';
+  // Not success, not pending, no error object either — shape doesn't
+  // match anything documented. Fail closed rather than guess.
+  return null;
+}
 
 /**
  * @param {{mode: 'mock'|'web-sdk', machineConfig: object, apiKey?: string}} params
@@ -70,24 +84,33 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
   });
 
   adapter.on(CUBO_EVENTS.TRANSACTION_RESULT, (result) => {
-    const stateEvent = RESULT_STATUS_TO_EVENT[result.status];
-    if (!stateEvent) {
-      log(machineConfig.machineId, 'CuboCardProvider: unmapped transactionResult.status, not transitioning', {
-        status: result.status,
-      });
-      notify({ event: CUBO_EVENTS.TRANSACTION_RESULT, result, transitioned: false });
-      return;
-    }
     // The state machine requires CARD_DETECTED (WAITING_FOR_CARD ->
-    // PROCESSING_PAYMENT) before any terminal event is valid. Whether the
-    // real SDK signals "card read" as a separate moment before
-    // transactionResult is UNVERIFIED (see CUBO-INTEGRATION.md) — but
-    // receiving ANY transactionResult is itself proof a card was read, so
-    // treat that as the CARD_DETECTED moment rather than skip straight to
-    // the outcome.
+    // PROCESSING_PAYMENT) before any terminal event is valid. The real SDK
+    // doesn't expose a separate "card read" moment before transactionResult
+    // — but receiving ANY transactionResult (including a pending one) is
+    // itself proof an attempt was made, so treat that as the CARD_DETECTED
+    // moment rather than skip straight to the outcome.
     if (session.getState() === STATES.WAITING_FOR_CARD) {
       session.send('CARD_DETECTED');
       notify({ event: 'card_detected' });
+    }
+
+    if (result.pending) {
+      log(machineConfig.machineId, 'transactionResult pending — not authorizing, not retrying automatically', {
+        message: result.message,
+      });
+      notify({ event: 'payment_pending', message: result.message });
+      return;
+    }
+
+    const stateEvent = interpretTransactionResult(result);
+    if (!stateEvent) {
+      log(machineConfig.machineId, 'CuboCardProvider: unrecognized transactionResult shape, not transitioning', {
+        success: result.success,
+        errorType: result.error?.type,
+      });
+      notify({ event: CUBO_EVENTS.TRANSACTION_RESULT, result, transitioned: false });
+      return;
     }
     session.send(stateEvent);
     notify({ event: CUBO_EVENTS.TRANSACTION_RESULT, result, transitioned: true });
@@ -140,7 +163,9 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     session.send('START_PAYMENT');
     notify({ event: 'payment_started', service: currentService.label });
     return adapter.startPayment({
-      amount: Math.round(currentService.amount * 100),
+      // amount is a STRING of cents (confirmed) — e.g. "2000" for Q20.00,
+      // not the number 2000.
+      amount: String(Math.round(currentService.amount * 100)),
       currencyCode: CUBO_CURRENCY_ISO4217[machineConfig.currency],
       currencySymbol: 'Q',
       ...(mode === 'mock' && currentService.mockOutcome ? { outcome: currentService.mockOutcome } : {}),

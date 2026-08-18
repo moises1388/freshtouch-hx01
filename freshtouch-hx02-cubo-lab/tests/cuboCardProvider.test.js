@@ -27,10 +27,9 @@ test('happy path: select -> connect -> createPayment(SUCCESS) -> canStartCycle t
   assert.throws(() => provider.requestCycle(), Esp32NotImplementedError);
 });
 
-// Every non-success transactionResult outcome the mock can produce,
-// including the real Cubo status name 'TRANSACTION_TERMINATED': none of
-// them may ever authorize a cycle.
-const nonSuccessOutcomes = ['DECLINED', 'CANCELLED', 'ERROR', 'TIMEOUT', 'TRANSACTION_TERMINATED'];
+// Every non-success transactionResult outcome the mock can produce: none
+// of them may ever authorize a cycle.
+const nonSuccessOutcomes = ['DECLINED', 'ERROR'];
 for (const outcome of nonSuccessOutcomes) {
   test(`outcome=${outcome}: canStartCycle stays false and requestCycle refuses`, async () => {
     const provider = await connected(newProvider(), outcome);
@@ -40,6 +39,22 @@ for (const outcome of nonSuccessOutcomes) {
     assert.throws(() => provider.requestCycle(), /Refused to request cycle start/);
   });
 }
+
+test('outcome=PENDING: does not transition, does not authorize, and does not retry automatically', async () => {
+  const provider = await connected(newProvider(), 'PENDING');
+  const pendingSnapshot = await new Promise((resolve) => {
+    provider.onResult((snap) => {
+      if (snap.event === 'payment_pending') resolve(snap);
+    });
+    provider.createPayment();
+  });
+
+  assert.ok(pendingSnapshot.message);
+  // Fail-closed: stays wherever CARD_DETECTED left it, never SUCCESS.
+  assert.equal(provider.getStatus(), STATES.PROCESSING_PAYMENT);
+  assert.equal(provider.canStartCycle(), false);
+  assert.throws(() => provider.requestCycle(), /Refused to request cycle start/);
+});
 
 test('connectPos before selectService throws', async () => {
   const provider = newProvider();
