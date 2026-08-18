@@ -1,0 +1,11 @@
+# Base de datos local de laboratorio — nunca comitear datos, ni de prueba ni reales
+data/*.db
+data/*.db-journal
+data/*.sqlite
+
+# Por si algún día se agrega una dependencia real
+node_modules/
+
+# Nunca credenciales locales
+.env
+.env.*
