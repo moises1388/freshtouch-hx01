@@ -7,20 +7,15 @@
 <link rel="stylesheet" href="lab.css" />
 
 <!--
-  Official Cubo Web SDK script tag — CONFIRMED pattern (source: Cubo's own
-  demo repo, github.com/Cubo-App/cubo-pos-sdk-web-demo):
-
-    <script src="https://sdk.cubopago.com/pos/vX.Y.Z/cubo-pos-sdk-web.js"></script>
-
-  Left commented out here because the exact current version (X.Y.Z) isn't
-  pinned down for this project yet — the demo repo's own docs disagree
-  with each other (v1.1.1 / v1.10.0 / v1.11.0 across its three doc files;
-  its demo.html itself uses v1.11.0, the most trustworthy of the three).
-  Confirm the current version before uncommenting — see the "How to
-  activate mode: real" section in CUBO-INTEGRATION.md.
-
-  <script src="https://sdk.cubopago.com/pos/v1.11.0/cubo-pos-sdk-web.js"></script>
+  Official Cubo Web SDK — source: Cubo's own demo repo
+  (github.com/Cubo-App/cubo-pos-sdk-web-demo). Version v1.11.0 pinned
+  below because that's what the demo repo's own demo.html uses (its other
+  two docs disagree: v1.1.1 / v1.10.0 — see CUBO-INTEGRATION.md). If this
+  version turns out to be stale or the script 404s, that's real signal to
+  report back, not something to silently work around by guessing another
+  version number.
 -->
+<script src="https://sdk.cubopago.com/pos/v1.11.0/cubo-pos-sdk-web.js"></script>
 </head>
 <body>
   <main class="lab">
