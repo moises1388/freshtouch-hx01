@@ -1,0 +1,16 @@
+{
+  "name": "freshtouch-core",
+  "version": "0.1.0-lab",
+  "private": true,
+  "description": "FreshTouch CORE — sistema de autorizacion y reporte multi-maquina. Etapa 1: laboratorio, datos de prueba. Independiente de la app de la tablet (HX01).",
+  "main": "src/telegram/handleUpdate.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "demo": "node demo.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
