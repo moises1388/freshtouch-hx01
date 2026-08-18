@@ -8,8 +8,13 @@ const { getFixtureFor } = require('./testFixtureData');
  * autorizado (resuelto antes, en auth/authorize.js — esta función no
  * decide permisos, solo reporta sobre lo que ya se decidió permitirle ver
  * al usuario).
+ *
+ * `suspendedMachineIds` solo se traduce a algo visible cuando
+ * `includeSuspended` es true — así el propio llamador (handleUpdate.js)
+ * decide, según el rol, si corresponde mostrarlo (política del hallazgo
+ * D4: solo super_admin ve que una máquina suspendida existe).
  */
-function buildStatusData(db, allowedMachineIds) {
+function buildStatusData(db, { allowedMachineIds, suspendedMachineIds = [], includeSuspended = false }) {
   const perMachine = allowedMachineIds.map((machineId) => {
     const machine = getMachine(db, machineId);
     const fixture = getFixtureFor(machineId);
@@ -22,6 +27,13 @@ function buildStatusData(db, allowedMachineIds) {
     };
   });
 
+  const suspended = includeSuspended
+    ? suspendedMachineIds.map((machineId) => {
+        const machine = getMachine(db, machineId);
+        return { machineId, machineName: machine ? machine.name : machineId };
+      })
+    : [];
+
   const totalToday = perMachine.reduce((sum, m) => sum + m.totalToday, 0);
   const lavados = perMachine.reduce((sum, m) => sum + m.lavados, 0);
   const lastOperationTime = perMachine
@@ -30,7 +42,7 @@ function buildStatusData(db, allowedMachineIds) {
     .sort()
     .pop() || '—';
 
-  return { perMachine, totalToday, lavados, lastOperationTime };
+  return { perMachine, suspended, totalToday, lavados, lastOperationTime };
 }
 
 module.exports = { buildStatusData };

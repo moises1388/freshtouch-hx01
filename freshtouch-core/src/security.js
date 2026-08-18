@@ -12,10 +12,16 @@
 //      conceptual de assertExpectedRepo()).
 //   2. No confiar en datos enviados por el usuario para decidir permisos.
 //   3. Allowlist donde corresponda (roles válidos, ubicación de datos).
-//   4. No exponer secretos (este módulo no maneja ninguno todavía).
-//   5. Configuración separada del código (ver env.js).
+//   4. No exponer secretos (ver config.js — nunca hardcodeados, siempre desde
+//      variable de entorno, indefinidos por defecto en laboratorio).
+//   5. Configuración separada del código (ver config.js).
 //   6. Registrar operaciones relevantes (ver repositories/auditEventRepository.js,
 //      invocado desde auth/authorize.js — nunca opcional).
+//
+// Revisión formal (commit 960592c) encontró que assertExpectedEnvironment()
+// y assertDataLocationIsSafe() existían pero no se aplicaban en los puntos
+// de entrada reales (db/connection.js, telegram/handleUpdate.js) — solo en
+// demo.js. Esta versión los aplica ahí, no solo aquí.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -29,13 +35,19 @@ const DATA_DIR = path.join(CORE_ROOT, 'data');
  * freshtouch-core/ esperada (marcador CORE.md) y no, por ejemplo, dentro
  * de un import accidental desde la raíz de freshtouch-hx01 o desde algún
  * otro proyecto que haya copiado archivos sueltos de aquí sin el resto.
+ *
+ * Se invoca desde los puntos de entrada reales (db/connection.js::createDatabase
+ * y telegram/handleUpdate.js::handleTelegramUpdate), no solo desde demo.js —
+ * por eso acepta `root` como parámetro opcional (default: CORE_ROOT real),
+ * lo que también permite probar el rechazo sin tocar el sistema de archivos
+ * en la mayoría de los tests (ver tests/security.test.js).
  */
-function assertExpectedEnvironment() {
-  const marker = path.join(CORE_ROOT, 'CORE.md');
+function assertExpectedEnvironment(root = CORE_ROOT) {
+  const marker = path.join(root, 'CORE.md');
   if (!fs.existsSync(marker)) {
     throw new Error(
       `[security] No se encontró "${marker}". FreshTouch CORE se niega a ` +
-      `arrancar fuera de su propio directorio esperado (CORE_ROOT=${CORE_ROOT}).`
+      `arrancar fuera de su propio directorio esperado (root=${root}).`
     );
   }
   return true;

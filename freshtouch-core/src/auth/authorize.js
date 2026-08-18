@@ -2,7 +2,7 @@
 
 const { findByTelegramUserId } = require('../repositories/authorizedUserRepository');
 const { listAllowedMachineIds } = require('../repositories/permissionRepository');
-const { listAllMachineIds } = require('../repositories/machineRepository');
+const { listAllMachineIds, listActiveMachineIds } = require('../repositories/machineRepository');
 
 /**
  * ÚNICO lugar del sistema donde se decide qué máquinas puede ver un
@@ -28,21 +28,39 @@ const { listAllMachineIds } = require('../repositories/machineRepository');
  * technician no existe ninguna excepción: sin fila en
  * authorized_user_machine, no hay acceso, punto.
  *
- * @returns {{authorized: boolean, user: object|null, allowedMachineIds: string[]}}
+ * Política de `machine.status` (revisión formal, hallazgo D4): una máquina
+ * `suspended` nunca cuenta como "disponible para operaciones normales" —
+ * se excluye de `allowedMachineIds` para TODOS los roles, incluido
+ * super_admin. Pero super_admin sí debe poder saber que existe y que está
+ * suspendida (nunca queda ciego a su propia flota), así que para
+ * super_admin se calcula además `suspendedMachineIds` con todas las
+ * suspendidas del sistema. Para owner/tenant/technician, `suspendedMachineIds`
+ * también se calcula (misma función, mismo camino, sin caso especial) pero
+ * queda restringido a las máquinas que ese usuario tiene permitidas — la
+ * capa de presentación (formatStatus.js) decide no mostrárselo, solo a
+ * super_admin, tal como pidió la autorización. Ningún dato histórico se
+ * borra ni se toca aquí — status es una bandera de lectura, no un filtro
+ * destructivo sobre las tablas.
+ *
+ * @returns {{authorized: boolean, user: object|null, allowedMachineIds: string[], suspendedMachineIds: string[]}}
  */
 function resolveAuthorization(db, telegramUserId) {
   const user = findByTelegramUserId(db, telegramUserId);
 
   if (!user) {
-    return { authorized: false, user: null, allowedMachineIds: [] };
+    return { authorized: false, user: null, allowedMachineIds: [], suspendedMachineIds: [] };
   }
 
-  const allowedMachineIds =
+  const permittedMachineIds =
     user.role === 'super_admin'
       ? listAllMachineIds(db)
       : listAllowedMachineIds(db, user.id);
 
-  return { authorized: true, user, allowedMachineIds };
+  const activeMachineIds = new Set(listActiveMachineIds(db));
+  const allowedMachineIds = permittedMachineIds.filter((id) => activeMachineIds.has(id));
+  const suspendedMachineIds = permittedMachineIds.filter((id) => !activeMachineIds.has(id));
+
+  return { authorized: true, user, allowedMachineIds, suspendedMachineIds };
 }
 
 module.exports = { resolveAuthorization };
