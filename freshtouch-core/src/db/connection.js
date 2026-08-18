@@ -17,15 +17,22 @@
 const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
+const { assertExpectedEnvironment, assertDataLocationIsSafe } = require('../security');
 
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 /**
  * @param {string} location ':memory:' (default, usado por tests y por el
  *   demo) o una ruta de archivo dentro de freshtouch-core/data/ — nunca
- *   fuera de este directorio (ver security.js::assertDataLocationIsSafe).
+ *   fuera de este directorio. Ambas condiciones se verifican aquí mismo,
+ *   no se confía en que quien llama las haya revisado antes (revisión
+ *   formal, commit 960592c: assertDataLocationIsSafe existía pero nadie
+ *   la invocaba).
  */
 function createDatabase(location = ':memory:') {
+  assertExpectedEnvironment();
+  assertDataLocationIsSafe(location);
+
   const db = new DatabaseSync(location);
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema);

@@ -6,19 +6,55 @@
 // Esta función es lo que un futuro servidor webhook llamaría con el
 // `update` ya parseado; se prueba directamente con objetos de prueba con
 // forma de update de Telegram, sin red de por medio.
+//
+// Revisión formal (commit 960592c, hallazgo D1): esta función asumía que
+// todo Update trae `.message.from.id` y `.message.text`. Telegram también
+// envía `edited_message`, `channel_post`, `callback_query`, y mensajes sin
+// texto (foto, sticker, ubicación...) — ninguno de esos tiene esa forma.
+// extractSupportedMessage() es ahora el único lugar que decide si un
+// Update trae algo que esta etapa sabe procesar; todo lo demás se ignora
+// de forma segura, nunca lanza.
 
+const { assertExpectedEnvironment } = require('../security');
 const { resolveAuthorization } = require('../auth/authorize');
 const { recordAuditEvent } = require('../repositories/auditEventRepository');
 const { buildStatusData } = require('../status/statusService');
 const { formatStatusMessage, formatUnauthorizedMessage } = require('./formatStatus');
 
 /**
+ * Únicas formas de Update que esta etapa sabe leer: un `message` con
+ * `from.id` y `text` de tipo string. `edited_message`, `channel_post`,
+ * `callback_query`, o un `message` sin texto (foto, sticker, ubicación...)
+ * devuelven null aquí — el llamador los trata como "no manejado", nunca
+ * como error.
+ */
+function extractSupportedMessage(update) {
+  if (!update || typeof update !== 'object') return null;
+  const message = update.message;
+  if (!message || typeof message !== 'object') return null;
+  if (!message.from || typeof message.from !== 'object') return null;
+  if (message.from.id === undefined || message.from.id === null) return null;
+  if (typeof message.text !== 'string') return null;
+  return message;
+}
+
+/**
  * @param {object} db
- * @param {{message: {from: {id: number|string}, text: string}}} update forma mínima de un Telegram Update
+ * @param {object} update un Telegram Update completo (cualquier forma real: message, edited_message, channel_post, callback_query...)
  */
 function handleTelegramUpdate(db, update) {
-  const telegramUserId = String(update.message.from.id);
-  const text = (update.message.text || '').trim();
+  assertExpectedEnvironment();
+
+  const message = extractSupportedMessage(update);
+  if (!message) {
+    // Forma de Update no soportada en esta etapa — se ignora, no se
+    // audita (no hay identidad confiable de la que dejar rastro en varios
+    // de estos casos, p. ej. channel_post) y sobre todo no se lanza.
+    return { handled: false, text: null };
+  }
+
+  const telegramUserId = String(message.from.id);
+  const text = message.text.trim();
 
   if (text !== '/status') {
     // Fuera de alcance de esta etapa: cualquier otro comando/texto se
@@ -39,16 +75,21 @@ function handleTelegramUpdate(db, update) {
     return { handled: true, authorized: false, text: formatUnauthorizedMessage() };
   }
 
-  const statusData = buildStatusData(db, auth.allowedMachineIds);
+  const statusData = buildStatusData(db, {
+    allowedMachineIds: auth.allowedMachineIds,
+    suspendedMachineIds: auth.suspendedMachineIds,
+    includeSuspended: auth.user.role === 'super_admin',
+  });
+
   recordAuditEvent(db, {
     telegramUserId,
     action: 'status',
     authorized: true,
     machinesQueried: auth.allowedMachineIds,
-    resultSummary: `ok: ${auth.allowedMachineIds.length} máquina(s) — rol ${auth.user.role}`,
+    resultSummary: `ok: ${auth.allowedMachineIds.length} máquina(s) activa(s) — rol ${auth.user.role}`,
   });
 
   return { handled: true, authorized: true, text: formatStatusMessage(statusData) };
 }
 
-module.exports = { handleTelegramUpdate };
+module.exports = { handleTelegramUpdate, extractSupportedMessage };
