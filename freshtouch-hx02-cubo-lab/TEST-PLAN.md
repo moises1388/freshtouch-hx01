@@ -103,8 +103,15 @@ POS:
       "connected".
 - [ ] Tablet Bluetooth off — `Bluetooth` status shows OFF/unavailable
       before attempting connect.
-- [ ] POS powered on, in range, Bluetooth on — POS is found and reaches
-      `CONNECTED` with a real `deviceName`.
+- [x] **POS powered on, in range, Bluetooth on — POS is found and reaches
+      `CONNECTED`.** Confirmed on the real HX02 tablet + physical QPOS
+      Cute (S/N `29600100122031610810`): Chrome's native Bluetooth picker
+      showed the device, pairing completed, `pos-status: Connected`,
+      `r-connection: CONNECTED`. Not yet confirmed: the real `deviceName`
+      string, since the lab UI doesn't currently display it anywhere (the
+      `connected` payload is received but discarded — see
+      `cuboCardProvider.js`'s CONNECTED handler). Worth wiring up as a
+      small follow-up, not required for the next step.
 - [ ] POS out of range / not discoverable — connect attempt fails
       cleanly, state machine reaches `PAYMENT_ERROR`, no crash.
 - [ ] Disconnect mid-session (POS powered off after connecting) —
