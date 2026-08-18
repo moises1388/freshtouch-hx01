@@ -4,8 +4,8 @@
   "machineName": "FreshTouch HX02",
   "location": "PENDIENTE — confirmar con el propietario",
   "cuboEnvironment": "sandbox",
-  "cuboPosSerial": "PENDIENTE",
-  "cuboPosId": "PENDIENTE",
+  "cuboPosSerial": "29600100122031610810",
+  "cuboPosId": "PENDIENTE — el S/N de la etiqueta puede no ser el mismo identificador que usa Cubo Admin internamente; confirmar si son el mismo valor",
   "currency": "GTQ",
   "currencyCodeIso4217": "0320",
   "services": {
