@@ -170,8 +170,20 @@ function resetLab() {
   renderButtons();
 }
 
+// buildProvider() runs once, at mode-switch/reset time, using whatever is
+// in the API Key field AT THAT MOMENT. If the key is typed in afterward
+// (a very natural order: switch to "Real Cubo Web SDK" first, then paste
+// the key), `provider` is stuck null forever with no retry — that was a
+// real bug, not a hypothetical one. Every action that needs a provider
+// calls this first, so it's rebuilt on demand with whatever is in the
+// field right now instead of only ever trying once.
+function ensureProvider() {
+  if (!provider) buildProvider();
+  return provider;
+}
+
 function selectService(name) {
-  if (!provider) {
+  if (!ensureProvider()) {
     log(MACHINE_ID, 'Cannot select service: payment provider is not ready (see SDK status above)');
     return;
   }
@@ -188,7 +200,7 @@ function selectService(name) {
 }
 
 async function connectPos() {
-  if (!provider) {
+  if (!ensureProvider()) {
     log(MACHINE_ID, 'Payment provider is not ready (see SDK status above)');
     return;
   }
