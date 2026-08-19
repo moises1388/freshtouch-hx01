@@ -23,6 +23,14 @@ import { CUBO_ERROR_TYPES } from './cuboEvents.js';
 export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 }) {
   const listeners = new Map();
   let connected = false;
+  // A per-invocation cancellation token, not a shared flag. Without this,
+  // an overlapping second startPayment() (e.g. cancel -> retry -> pay
+  // again, all inside the simulated delay window) would reset a shared
+  // "cancelRequested" flag and let a call that should have stopped keep
+  // running to completion, emitting a second transactionResult on top of
+  // the new call's — corrupting the state machine. Each call owns its own
+  // token, so a stale call can never affect a newer one.
+  let activeCancelToken = null;
 
   function emit(event, payload) {
     for (const handler of listeners.get(event) || []) handler(payload);
@@ -51,6 +59,18 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
     emit('disconnected', undefined); // real 'disconnected' carries no payload
   }
 
+  // Real method (confirmed): aborts the in-flight HTTP call. Here that
+  // means the simulated startPayment() below stops before emitting any
+  // transactionResult at all — matching the plausible real behavior of an
+  // aborted request never getting a response. The caller (CuboCardProvider)
+  // doesn't wait on this to resolve the local state; it transitions
+  // immediately via its own cancelPayment().
+  function cancelCurrentTransaction() {
+    if (!activeCancelToken) return false;
+    activeCancelToken.cancelled = true;
+    return true;
+  }
+
   /**
    * @param {{amount:string, currencyCode:string, currencySymbol:string, outcome?:'SUCCESS'|'DECLINED'|'PENDING'|'ERROR'}} params
    *   `outcome` is a lab-only override to exercise every result path; the
@@ -67,16 +87,26 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
       throw new Error('startPayment called while POS is not connected (simulated)');
     }
 
+    const myToken = { cancelled: false };
+    activeCancelToken = myToken;
+
     log(machineConfig.machineId, 'Payment started (simulated)', {
       amount,
       currency: currencySymbol,
     });
 
     await delay(simulatedLatencyMs);
+    if (myToken.cancelled) return endCancelled();
     log(machineConfig.machineId, 'Waiting for card (simulated)');
+
     await delay(simulatedLatencyMs);
+    if (myToken.cancelled) return endCancelled();
     log(machineConfig.machineId, 'Processing payment (simulated)');
+
     await delay(simulatedLatencyMs);
+    if (myToken.cancelled) return endCancelled();
+
+    if (activeCancelToken === myToken) activeCancelToken = null;
 
     if (outcome === 'PENDING') {
       // Confirmed shape: no `data`, no `error` — success is falsy, pending
@@ -120,9 +150,24 @@ export function createMockCuboAdapter({ machineConfig, simulatedLatencyMs = 900 
         timestamp: nowIso(),
       },
     });
+
+    function endCancelled() {
+      if (activeCancelToken === myToken) activeCancelToken = null;
+      log(machineConfig.machineId, 'Payment request cancelled via cancelCurrentTransaction (simulated)');
+      // No transactionResult emitted — an aborted HTTP call gets no
+      // response. cuboCardProvider.cancelPayment() already moved the
+      // local state on its own; this just stops the simulated timers.
+    }
   }
 
-  return { connect, disconnect, startPayment, on, isConnected: () => connected };
+  return {
+    connect,
+    disconnect,
+    startPayment,
+    on,
+    isConnected: () => connected,
+    cancelCurrentTransaction,
+  };
 }
 
 function delay(ms) {

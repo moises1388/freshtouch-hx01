@@ -34,9 +34,8 @@
 //     (throws synchronously on validation errors — not connected, bad
 //     amount/currency; the actual result arrives later via the
 //     'transactionResult' event), cancelCurrentTransaction(): boolean
-//     (aborts the in-flight HTTP call; not currently wired into this
-//     adapter or CuboCardProvider — see cuboCardProvider.js),
-//     getDeviceInfo(), getPosId(), getInstallments(),
+//     (aborts the in-flight HTTP call — wired into CuboCardProvider's
+//     cancelPayment()), getDeviceInfo(), getPosId(), getInstallments(),
 //     getInstallmentCalculation() (MSI-only, unused by HX02), on(), off(),
 //     removeAllListeners(). Public properties: isConnected (boolean),
 //     device (BluetoothDevice | null).
@@ -121,5 +120,20 @@ export function createWebSdkCuboAdapter({ machineConfig, apiKey }) {
     return sdk.startPayment({ amount, currencyCode, currencySymbol });
   }
 
-  return { connect, disconnect, startPayment, on };
+  // cancelCurrentTransaction() aborts the in-flight HTTP call — confirmed
+  // real method, see the header comment. Whether it also produces a
+  // transactionResult/error afterward is UNVERIFIED; CuboCardProvider
+  // doesn't wait on that, it transitions its own local state immediately.
+  function cancelCurrentTransaction() {
+    return sdk.cancelCurrentTransaction();
+  }
+
+  return {
+    connect,
+    disconnect,
+    startPayment,
+    on,
+    cancelCurrentTransaction,
+    isConnected: () => sdk.isConnected,
+  };
 }

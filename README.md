@@ -127,10 +127,10 @@ manual hardware checklist that can't be automated from here.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | FreshTouch page loads | ✅ `lab/lab.html` loads and renders the test screen |
-| 2 | Cubo SDK Web initializes | ⏳ SDK identity, script URL pattern, and init call CONFIRMED (Cubo's official demo repo); untested against a real script/device (no credentials/hardware here) |
-| 3 | Tablet detects POS | ❌ Needs real hardware, not available here |
-| 4 | Tablet connects via Bluetooth | ❌ Needs real hardware |
-| 5 | POS state CONNECTED | ✅ Simulated; ❌ real |
+| 2 | Cubo SDK Web initializes | ✅ **Confirmed on real hardware** — real `CuboPagoSDK` script + sandbox API key initialized successfully on the HX02 tablet |
+| 3 | Tablet detects POS | ✅ **Confirmed on real hardware** — Chrome's native Bluetooth picker showed the real QPOS Cute |
+| 4 | Tablet connects via Bluetooth | ✅ **Confirmed on real hardware** — real pairing completed |
+| 5 | POS state CONNECTED | ✅ Simulated; ✅ **real** — `pos-status: Connected`, `r-connection: CONNECTED` on real hardware |
 | 6 | Send test amount | ✅ Simulated with the real, confirmed parameter shapes; ❌ real |
 | 7 | Cubo requests card | ✅ Simulated only |
 | 8 | Result received | ✅ Simulated, using the real, confirmed `transactionResult` shape (`success`/`data`/`pending`/`error`) |

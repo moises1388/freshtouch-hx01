@@ -151,12 +151,25 @@ published to npm for bundler-based projects (see below).
   (`sdk.cubopago.com`) and appears to manage all backend communication
   internally; this project's code has never needed to reference that REST
   endpoint directly for the card flow, and nothing here assumes it does.
-- Whether the QPOS Cute needs any registration/pairing step in Cubo Admin
-  Sandbox (e.g. its serial number) before Bluetooth pairing succeeds.
-- Real device behavior in general — none of this has been run against
-  actual hardware yet. Everything above is confirmed against Cubo's own
-  documentation and example code, not against an observed real
-  transaction.
+- Real payment behavior specifically — `startPayment()` and
+  `transactionResult` have not been run against real hardware yet
+  (deliberately: `connect()`-only first, no charges). The exact
+  `transactionResult.data` field names on success and the `pending: true`
+  path are still unconfirmed against a real transaction.
+
+**Update — real hardware, `connect()` only (2026):** confirmed on the
+actual HX02 tablet against the physical QPOS Cute (S/N
+`29600100122031610810`), no code changes needed beyond fixing a lab-only
+provider-retry bug (see git history, `lab.js`). No registration/pairing
+step in Cubo Admin Sandbox was needed beyond generating the API key —
+`connect()` alone was sufficient. Confirmed working: the real
+`CuboPagoSDK` script loads, initializes with a sandbox key, `connect()`
+triggers Chrome's native Bluetooth device picker, the QPOS Cute is found
+and pairs, and the `connected` event fires (`pos-status: Connected`,
+`r-connection: CONNECTED` in the lab UI). Not yet captured: the real
+`deviceName` string from that event — the lab UI doesn't display it
+today (see `TEST-PLAN.md`). `startPayment()` still hasn't been run for
+real — that's the next, separately-approved step.
 
 **Action needed:** the remaining items need either a real sandbox
 `connect()`/`startPayment()` run with the raw events logged, or a direct

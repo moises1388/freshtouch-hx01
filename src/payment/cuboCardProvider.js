@@ -172,17 +172,51 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     });
   }
 
-  // Best-effort, local-only: no cancel() method is confirmed on the real
-  // SDK (see CUBO-INTEGRATION.md), so this cannot actually tell the POS to
-  // stop. It only reflects operator/customer intent in our own state
-  // machine, and only from states where CANCEL is a valid transition.
+  // Calls the real, confirmed cancelCurrentTransaction() (aborts the
+  // in-flight HTTP call) when the adapter exposes it, then transitions our
+  // own state machine immediately regardless of what that call returns —
+  // whether the real SDK also emits its own event after an abort is
+  // UNVERIFIED (see CUBO-INTEGRATION.md), so this doesn't wait on it.
   function cancelPayment() {
     const state = session.getState();
     if (state !== STATES.WAITING_FOR_CARD && state !== STATES.PROCESSING_PAYMENT) {
       throw new Error(`cancelPayment() has nothing to cancel from state "${state}".`);
     }
+    const realCancelAccepted = adapter.cancelCurrentTransaction?.() ?? false;
     session.send('CANCEL');
-    notify({ event: 'cancelled_locally' });
+    notify({ event: 'cancelled_locally', realCancelAccepted });
+  }
+
+  // Lets a failed attempt (declined/cancelled/error/timeout) try again
+  // without forcing a fresh Bluetooth pairing when the POS is still
+  // physically connected — reported real friction: after any failure, the
+  // only way back to a payable state was RESET, which also tears down the
+  // POS connection and re-shows the browser's Bluetooth device picker.
+  // Skipping a redundant connect() call when the adapter still reports a
+  // live connection is a judgment call, not a documented SDK guarantee —
+  // calling connect() again on an already-connected real SDK instance is
+  // itself UNVERIFIED behavior (see CUBO-INTEGRATION.md).
+  async function retryPayment() {
+    const state = session.getState();
+    const retryableStates = new Set([
+      STATES.PAYMENT_DECLINED,
+      STATES.PAYMENT_CANCELLED,
+      STATES.PAYMENT_ERROR,
+      STATES.PAYMENT_TIMEOUT,
+    ]);
+    if (!retryableStates.has(state)) {
+      throw new Error(`retryPayment() has nothing to retry from state "${state}".`);
+    }
+    session.send('RETRY');
+    notify({ event: 'retry_ready' });
+
+    if (adapter.isConnected?.()) {
+      session.send('CONNECT_POS');
+      session.send('POS_CONNECTED');
+      notify({ event: CUBO_EVENTS.CONNECTED, reused: true });
+      return;
+    }
+    await connectPos();
   }
 
   // Explicit and separate from the transactionResult handler on purpose:
@@ -204,6 +238,7 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     disconnectPos,
     createPayment,
     cancelPayment,
+    retryPayment,
     getStatus: () => session.getState(),
     canStartCycle: () => canStartCycle(session.getState()),
     requestCycle,
