@@ -57,10 +57,20 @@ function resetResultPanel() {
   ['r-transaction', 'r-message', 'r-txn-id'].forEach((id) => setStatus(id, '—'));
 }
 
+const FAILURE_STATES = new Set([
+  STATES.PAYMENT_DECLINED,
+  STATES.PAYMENT_CANCELLED,
+  STATES.PAYMENT_ERROR,
+  STATES.PAYMENT_TIMEOUT,
+]);
+const IN_FLIGHT_STATES = new Set([STATES.WAITING_FOR_CARD, STATES.PROCESSING_PAYMENT]);
+
 function renderButtons() {
   const state = provider ? provider.getStatus() : STATES.IDLE;
   el('pay-btn').disabled = !provider || state !== STATES.POS_CONNECTED;
   el('disconnect-btn').disabled = !provider;
+  el('cancel-btn').disabled = !provider || !IN_FLIGHT_STATES.has(state);
+  el('retry-btn').disabled = !provider || !FAILURE_STATES.has(state);
 }
 
 // This is the one place that decides, on screen, whether the payment that
@@ -236,6 +246,29 @@ async function testPayment() {
   }
 }
 
+// For a payment that's taking too long (waiting_for_card / processing) —
+// aborts the real in-flight request via cancelCurrentTransaction() when
+// available, then moves the local state to PAYMENT_CANCELLED immediately.
+function cancelInFlightPayment() {
+  if (!provider) return;
+  try {
+    provider.cancelPayment();
+  } catch (err) {
+    log(MACHINE_ID, 'cancelPayment() threw', { reason: err.message });
+  }
+}
+
+// For after a failure (declined/cancelled/error/timeout) — tries again
+// without forcing a fresh Bluetooth pairing if the POS is still connected.
+async function retryAfterFailure() {
+  if (!provider) return;
+  try {
+    await provider.retryPayment();
+  } catch (err) {
+    log(MACHINE_ID, 'retryPayment() threw', { reason: err.message });
+  }
+}
+
 async function checkBluetoothAvailability() {
   try {
     if (navigator.bluetooth?.getAvailability) {
@@ -307,6 +340,8 @@ async function init() {
   el('connect-btn').addEventListener('click', connectPos);
   el('disconnect-btn').addEventListener('click', disconnectPos);
   el('pay-btn').addEventListener('click', testPayment);
+  el('cancel-btn').addEventListener('click', cancelInFlightPayment);
+  el('retry-btn').addEventListener('click', retryAfterFailure);
   el('reset-btn').addEventListener('click', resetLab);
 
   renderButtons();
