@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>FreshTouch HX02+</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Share+Tech+Mono&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles/theme.css">
+<link rel="stylesheet" href="assets/styles/admin-mock.css">
+</head>
+<body>
+<div class="bubbles" id="bbl"></div>
+<div id="wm"><div class="wm-t">FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch</div></div>
+
+<!-- FASE 1: banner de "esto no es HX01 en producción" — se quita cuando la app tenga su propio despliegue real -->
+<div style="position:fixed;top:0;left:0;right:0;z-index:50;background:#7a1f1f;color:#fff;font-family:'Montserrat',sans-serif;font-size:10px;text-align:center;padding:3px;letter-spacing:1px;">
+  FRESHTOUCH APP — HX02+ — FASE 1 — BASE DE DESARROLLO, NO ES HX01 PRODUCCIÓN
+</div>
+
+<!-- ═══════════════ IDLE ═══════════════ -->
+<div class="scr on" id="s-idle">
+  <div class="idle-glow"></div>
+  <div class="idle-c">
+    <img class="ft-banner" id="logo-tap-target" src="assets/img/img01.png" alt="FreshTouch">
+    <div class="helmet-stage">
+      <img class="hview hv-f" src="assets/img/img02.png" alt="casco">
+    </div>
+    <div class="idle-title" id="idle-title">Toca para comenzar</div>
+    <div class="powered-txt">POWERED BY HYDROX</div>
+    <button class="btn-act blue" onclick="FreshTouchApp.selectService('basic')">Iniciar</button>
+  </div>
+</div>
+
+<!-- ═══════════════ SERVICE_SELECTED ═══════════════ -->
+<div class="scr" id="s-service">
+  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+  <h2>Elige tu servicio</h2>
+  <div class="plan-body">
+    <button class="plan-card basic" onclick="FreshTouchApp.chooseService('basic')">
+      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;display:block;margin:0 auto 4px;">
+      <div class="plan-nm" id="plan-basic-label">Básico</div>
+      <div class="plan-price" id="plan-basic-price">Q20</div>
+    </button>
+    <button class="plan-card premium" onclick="FreshTouchApp.chooseService('premium')">
+      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;display:block;margin:0 auto 4px;">
+      <div class="plan-nm" id="plan-premium-label">Premium</div>
+      <div class="plan-price" id="plan-premium-price">Q35</div>
+    </button>
+  </div>
+  <button class="btn-act green" onclick="FreshTouchApp.requestPayment()">Pagar</button>
+  <button class="btn-act" onclick="FreshTouchApp.cancel()">Cancelar</button>
+</div>
+
+<!-- ═══════════════ WAITING_PAYMENT ═══════════════ -->
+<div class="scr" id="s-payment">
+  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+  <h2>Esperando pago <span class="mock-badge">MOCK</span></h2>
+  <div id="payment-status">Conectando...</div>
+
+  <div class="mock-controls">
+    <div class="mock-controls-label">Controles de desarrollo — no existen en producción</div>
+    <button onclick="FreshTouchApp.simulatePayment('SUCCESS')">Simular: Pago aprobado</button>
+    <button onclick="FreshTouchApp.simulatePayment('DECLINED')">Simular: Pago rechazado</button>
+    <button onclick="FreshTouchApp.simulatePayment('ERROR')">Simular: Error</button>
+  </div>
+  <button class="btn-act" onclick="FreshTouchApp.cancel()">Cancelar</button>
+</div>
+
+<!-- ═══════════════ READY_TO_START ═══════════════ -->
+<div class="scr" id="s-ready">
+  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+  <h2>Pago aprobado</h2>
+  <p>Toca para abrir la puerta y colocar tu casco.</p>
+  <button class="btn-act blue" onclick="FreshTouchApp.openDoor()">Abrir puerta</button>
+</div>
+
+<!-- ═══════════════ DOOR_OPEN ═══════════════ -->
+<div class="scr" id="s-door">
+  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+  <h2>Puerta abierta</h2>
+  <p>Coloca tu casco y toca Iniciar.</p>
+  <button class="btn-act green" onclick="FreshTouchApp.startCycle()">Iniciar</button>
+</div>
+
+<!-- ═══════════════ CYCLE_RUNNING ═══════════════ -->
+<div class="scr" id="s-cycle">
+  <div id="cyc-mid" style="margin-left:auto;font-family:monospace,monospace;font-size:11px;color:var(--blue);"></div>
+  <h2>Ciclo en curso</h2>
+  <div id="cyc-timer">0:05</div>
+  <div id="cyc-phase">Vapor <span class="mock-badge">MOCK — sin ESP32 real</span></div>
+</div>
+
+<!-- ═══════════════ CYCLE_FINISHED ═══════════════ -->
+<div class="scr" id="s-done">
+  <img class="done-mascot" src="assets/img/img05.png" alt="HX02">
+  <h2>¡Listo!</h2>
+  <p>Retira tu casco.</p>
+  <button class="btn-act blue" onclick="FreshTouchApp.returnToIdle()">Volver al inicio</button>
+</div>
+
+<!-- ═══════════════ ADMIN — PIN ═══════════════ -->
+<div class="scr" id="s-admin-pin">
+  <img class="pin-logo" src="assets/img/img04.png" alt="HYDROX">
+  <h2>Modo Administrador <span class="mock-badge">MOCK</span></h2>
+  <div id="pin-display">______</div>
+  <div class="pin-pad" id="pin-pad"></div>
+  <button class="btn-act" onclick="FreshTouchApp.closeAdminEntry()">Cancelar</button>
+</div>
+
+<!-- ═══════════════ ADMIN — PANEL ═══════════════ -->
+<div class="scr" id="s-admin-panel">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <img class="adm-hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <h2>Panel de Administración <span class="mock-badge">MOCK</span></h2>
+  </div>
+
+  <div class="admin-panel-section">
+    <h3>Identidad de máquina</h3>
+    <div id="admin-config-rows"></div>
+  </div>
+
+  <div class="admin-panel-section">
+    <h3>Diagnóstico</h3>
+    <div id="admin-diag-rows"></div>
+    <button onclick="FreshTouchApp.runDiagnostics()">Probar conexiones</button>
+  </div>
+
+  <div class="admin-panel-section">
+    <h3>Exportar / Reset</h3>
+    <button onclick="FreshTouchApp.exportConfig()">Exportar configuración (sin secretos)</button>
+    <button onclick="FreshTouchApp.resetMachine()">Reset de máquina (mock)</button>
+  </div>
+
+  <button class="btn-act" onclick="FreshTouchApp.logoutAdmin()">Salir del modo Admin</button>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
