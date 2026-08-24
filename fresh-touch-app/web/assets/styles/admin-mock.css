@@ -4,6 +4,20 @@
    "lo nuevo de esta fase". Usa las mismas variables de color/tipografía
    ya definidas en theme.css — no inventa una paleta nueva. */
 
+.fase1-tag {
+  position: fixed;
+  bottom: 6px;
+  right: 6px;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 .mock-badge {
   display: inline-block;
   background: var(--yellow);

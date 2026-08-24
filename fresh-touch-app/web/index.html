@@ -11,128 +11,310 @@
 <body>
 <div class="bubbles" id="bbl"></div>
 <div id="wm"><div class="wm-t">FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch</div></div>
+<button id="lang-btn" onclick="toggleLang()">🇺🇸 English</button>
 
-<!-- FASE 1: banner de "esto no es HX01 en producción" — se quita cuando la app tenga su propio despliegue real -->
-<div style="position:fixed;top:0;left:0;right:0;z-index:50;background:#7a1f1f;color:#fff;font-family:'Montserrat',sans-serif;font-size:10px;text-align:center;padding:3px;letter-spacing:1px;">
-  FRESHTOUCH APP — HX02+ — FASE 1 — BASE DE DESARROLLO, NO ES HX01 PRODUCCIÓN
-</div>
+<!-- Fase 1 — etiqueta discreta, no forma parte del diseño de HX01, no interfiere con la comparación visual de las pantallas -->
+<div class="fase1-tag">FASE 1 — fresh-touch-app</div>
 
-<!-- ═══════════════ IDLE ═══════════════ -->
+<!-- IDLE -->
 <div class="scr on" id="s-idle">
   <div class="idle-glow"></div>
   <div class="idle-c">
-    <img class="ft-banner" id="logo-tap-target" src="assets/img/img01.png" alt="FreshTouch">
+    <img class="ft-banner" src="assets/img/img01.png" alt="FreshTouch">
     <div class="helmet-stage">
       <img class="hview hv-f" src="assets/img/img02.png" alt="casco">
+      <img class="hview hv-r" src="assets/img/img03.png" alt="casco">
+      <img class="hview hv-l" src="assets/img/img03.png" alt="casco">
     </div>
-    <div class="idle-title" id="idle-title">Toca para comenzar</div>
-    <div class="powered-txt">POWERED BY HYDROX</div>
-    <button class="btn-act blue" onclick="FreshTouchApp.selectService('basic')">Iniciar</button>
+    <h1 class="idle-title" id="ti-title">Limpieza Profesional<br>para tu <span>Casco</span></h1>
+    <p class="idle-sub" id="ti-sub">Vapor &middot; Secado &middot; Aroma &middot; Antibacterial</p>
+    <div class="feats">
+      <span class="feat" id="tf1">🌫️ Vapor</span><span class="feat" id="tf2">💨 Secado</span>
+      <span class="feat" id="tf3">🌸 Aroma</span><span class="feat">🦠 Antibacterial</span>
+    </div>
+    <button class="btn-idle" id="ti-btn" onclick="go('s-plan')">INICIAR LIMPIEZA</button>
+    <p class="price-hint" id="ti-price">Básico Q20 &nbsp;&middot;&nbsp; Premium Q35</p>
   </div>
+  <div id="adm-trig" onclick="admTap()"></div>
 </div>
 
-<!-- ═══════════════ SERVICE_SELECTED ═══════════════ -->
-<div class="scr" id="s-service">
-  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
-  <h2>Elige tu servicio</h2>
+<!-- PLAN -->
+<div class="scr" id="s-plan">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tp-title">Elige tu Plan</div><div class="hdr-s" id="tp-sub">Selecciona el servicio</div></div>
+    <button class="btn-back" onclick="go('s-idle')" id="tp-back">← Volver</button>
+  </div>
   <div class="plan-body">
-    <button class="plan-card basic" onclick="FreshTouchApp.chooseService('basic')">
-      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;display:block;margin:0 auto 4px;">
-      <div class="plan-nm" id="plan-basic-label">Básico</div>
-      <div class="plan-price" id="plan-basic-price">Q20</div>
-    </button>
-    <button class="plan-card premium" onclick="FreshTouchApp.chooseService('premium')">
-      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;display:block;margin:0 auto 4px;">
-      <div class="plan-nm" id="plan-premium-label">Premium</div>
-      <div class="plan-price" id="plan-premium-price">Q35</div>
-    </button>
+    <div class="plan-card basic" onclick="selectPlan('basic')">
+      <div class="plan-bdg b" id="tb-badge">BÁSICO</div>
+      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;margin-bottom:4px;display:block;margin:0 auto 4px;">
+      <div class="plan-nm" id="tb-name">Limpieza Básica</div>
+      <div class="plan-price price-b"><sup>Q</sup><span id="pbd">20</span></div>
+      <div class="plan-steps" id="basic-steps"></div>
+      <button class="btn-plan basic-btn" id="tb-sel">SELECCIONAR</button>
+    </div>
+    <div class="plan-card premium" onclick="selectPlan('premium')">
+      <div class="plan-bdg p" id="tpp-badge">⭐ PREMIUM</div>
+      <img src="assets/img/img02.png" style="width:54px;height:54px;object-fit:contain;margin-bottom:4px;display:block;margin:0 auto 4px;">
+      <div class="plan-nm" id="tpp-name">Limpieza Premium</div>
+      <div class="plan-price price-p"><sup>Q</sup><span id="ppd">35</span></div>
+      <div class="plan-steps" id="premium-steps"></div>
+      <button class="btn-plan premium-btn" id="tpp-sel">SELECCIONAR</button>
+    </div>
   </div>
-  <button class="btn-act green" onclick="FreshTouchApp.requestPayment()">Pagar</button>
-  <button class="btn-act" onclick="FreshTouchApp.cancel()">Cancelar</button>
 </div>
 
-<!-- ═══════════════ WAITING_PAYMENT ═══════════════ -->
+<!-- PAYMENT -->
 <div class="scr" id="s-payment">
-  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
-  <h2>Esperando pago <span class="mock-badge">MOCK</span></h2>
-  <div id="payment-status">Conectando...</div>
-
-  <div class="mock-controls">
-    <div class="mock-controls-label">Controles de desarrollo — no existen en producción</div>
-    <button onclick="FreshTouchApp.simulatePayment('SUCCESS')">Simular: Pago aprobado</button>
-    <button onclick="FreshTouchApp.simulatePayment('DECLINED')">Simular: Pago rechazado</button>
-    <button onclick="FreshTouchApp.simulatePayment('ERROR')">Simular: Error</button>
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tpay-title">Método de Pago</div><div class="hdr-s" id="pay-plan-lbl">Plan Básico</div></div>
+    <button class="btn-back" onclick="go('s-plan')" id="tpay-back">← Volver</button>
   </div>
-  <button class="btn-act" onclick="FreshTouchApp.cancel()">Cancelar</button>
+  <div class="pay-body">
+    <div class="pay-opt qr-opt" onclick="openQR()">
+      <span class="pay-ico">📱</span>
+      <div class="pay-title" id="tpay-qr-t">Pago con QR</div>
+      <div class="pay-sub" id="tpay-qr-s">Cubo &middot; Escanea y paga<br>desde tu celular</div>
+      <div class="qr-badge-sm">CUBO</div>
+    </div>
+
+    <div class="pay-opt" onclick="openCode('cash')">
+      <span class="pay-ico">💵</span>
+      <div class="pay-title" id="tpay-cash-t">Pagué en Caja</div>
+      <div class="pay-sub" id="tpay-cash-s">Ingresa el código<br>que te dieron</div>
+    </div>
+    <div class="pay-opt" onclick="openCode('promo')">
+      <span class="pay-ico">🎁</span>
+      <div class="pay-title" id="tpay-pro-t">Código Promoción</div>
+      <div class="pay-sub" id="tpay-pro-s">Ingresa tu código<br>de descuento</div>
+    </div>
+  </div>
 </div>
 
-<!-- ═══════════════ READY_TO_START ═══════════════ -->
-<div class="scr" id="s-ready">
-  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
-  <h2>Pago aprobado</h2>
-  <p>Toca para abrir la puerta y colocar tu casco.</p>
-  <button class="btn-act blue" onclick="FreshTouchApp.openDoor()">Abrir puerta</button>
+<!-- QR CUBO -->
+<div class="scr" id="s-qr">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tqr-title">Pago con QR</div><div class="hdr-s" id="qr-amt-lbl">Q20.00</div></div>
+    <button class="btn-back" onclick="cancelQR()" id="tqr-back">← Volver</button>
+  </div>
+  <div class="qr-body">
+    <div class="qr-amt" id="qr-amt-big">Q20.00</div>
+    <div class="qr-box">
+      <img id="qr-img" src="" alt="QR CUBO — MOCK, Fase 1 no genera un QR real" class="qr-img">
+    </div>
+    <div class="qr-brand">💳 Paga con <strong>CUBO</strong> <span class="mock-badge">MOCK</span></div>
+    <div class="qr-scan" id="tqr-scan">Abre tu app CUBO y escanea el codigo</div>
+    <div class="qr-timer-lbl" id="qr-timer">⏱ 3:00</div>
+    <div class="qr-status" id="tqr-status">ESPERANDO CONFIRMACION...</div>
+    <button class="btn-qr-manual" onclick="qrManualConfirm()" id="tqr-btn">Confirmar pago manualmente</button>
+  </div>
 </div>
 
-<!-- ═══════════════ DOOR_OPEN ═══════════════ -->
-<div class="scr" id="s-door">
-  <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
-  <h2>Puerta abierta</h2>
-  <p>Coloca tu casco y toca Iniciar.</p>
-  <button class="btn-act green" onclick="FreshTouchApp.startCycle()">Iniciar</button>
+<!-- CODE -->
+<div class="scr" id="s-code">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="code-hdr-t">Código de Caja</div><div class="hdr-s" id="code-hdr-s">Ingresa el código recibido</div></div>
+    <button class="btn-back" onclick="go('s-payment')" id="tcode-back">← Volver</button>
+  </div>
+  <div class="code-body">
+    <div class="code-panel">
+      <div class="code-ico" id="code-ico">💵</div>
+      <div class="code-ttl" id="code-ttl">Código de Caja</div>
+      <div class="code-sub" id="code-sub">Ej: CJ-XXXX <span class="mock-badge">MOCK</span></div>
+      <div class="code-disp" id="code-disp">_</div>
+      <div class="qw">
+        <div class="qrow">
+          <button class="qk sm" onclick="kp('1')">1</button><button class="qk sm" onclick="kp('2')">2</button>
+          <button class="qk sm" onclick="kp('3')">3</button><button class="qk sm" onclick="kp('4')">4</button>
+          <button class="qk sm" onclick="kp('5')">5</button><button class="qk sm" onclick="kp('6')">6</button>
+          <button class="qk sm" onclick="kp('7')">7</button><button class="qk sm" onclick="kp('8')">8</button>
+          <button class="qk sm" onclick="kp('9')">9</button><button class="qk sm" onclick="kp('0')">0</button>
+          <button class="qk sm" onclick="kp('-')">-</button>
+        </div>
+        <div class="qrow">
+          <button class="qk" onclick="kp('Q')">Q</button><button class="qk" onclick="kp('W')">W</button>
+          <button class="qk" onclick="kp('E')">E</button><button class="qk" onclick="kp('R')">R</button>
+          <button class="qk" onclick="kp('T')">T</button><button class="qk" onclick="kp('Y')">Y</button>
+          <button class="qk" onclick="kp('U')">U</button><button class="qk" onclick="kp('I')">I</button>
+          <button class="qk" onclick="kp('O')">O</button><button class="qk" onclick="kp('P')">P</button>
+        </div>
+        <div class="qrow">
+          <button class="qk" onclick="kp('A')">A</button><button class="qk" onclick="kp('S')">S</button>
+          <button class="qk" onclick="kp('D')">D</button><button class="qk" onclick="kp('F')">F</button>
+          <button class="qk" onclick="kp('G')">G</button><button class="qk" onclick="kp('H')">H</button>
+          <button class="qk" onclick="kp('J')">J</button><button class="qk" onclick="kp('K')">K</button>
+          <button class="qk" onclick="kp('L')">L</button>
+        </div>
+        <div class="qrow">
+          <button class="qk" onclick="kp('Z')">Z</button><button class="qk" onclick="kp('X')">X</button>
+          <button class="qk" onclick="kp('C')">C</button><button class="qk" onclick="kp('V')">V</button>
+          <button class="qk" onclick="kp('B')">B</button><button class="qk" onclick="kp('N')">N</button>
+          <button class="qk" onclick="kp('M')">M</button>
+          <button class="qk del" onclick="kp('DEL')">&#9003; DEL</button>
+          <button class="qk ok" onclick="kp('OK')">&#10003; OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- ═══════════════ CYCLE_RUNNING ═══════════════ -->
+<!-- SESSION -->
+<div class="scr" id="s-session">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tsess-title">Sesion Activa</div><div class="hdr-s" id="sess-plan-hdr">Plan Basico</div></div>
+    <div class="sess-timeout" id="sess-timeout">⏱ 2:00</div>
+  </div>
+  <div class="sess-body">
+    <div class="steps-row">
+      <div class="sstep on" id="ss1"><div class="ss-num">1</div><div class="ss-lbl" id="ts1">Abrir Puerta</div></div>
+      <div class="ss-line"></div>
+      <div class="sstep" id="ss2"><div class="ss-num">2</div><div class="ss-lbl" id="ts2">Colocar Casco</div></div>
+      <div class="ss-line"></div>
+      <div class="sstep" id="ss3"><div class="ss-num">3</div><div class="ss-lbl" id="ts3">Iniciar Ciclo</div></div>
+    </div>
+    <div class="sess-anim" id="sess-anim">🚪</div>
+    <div class="sess-inst" id="sess-inst">Presiona para abrir la puerta e introducir tu casco</div>
+    <div class="sess-sub" id="sess-sub">Coloca tu casco dentro y cierra la puerta</div>
+    <button class="btn-act blue" id="sess-btn" onclick="sessAction()">🔓 ABRIR PUERTA</button>
+  </div>
+</div>
+
+<!-- CYCLE -->
 <div class="scr" id="s-cycle">
-  <div id="cyc-mid" style="margin-left:auto;font-family:monospace,monospace;font-size:11px;color:var(--blue);"></div>
-  <h2>Ciclo en curso</h2>
-  <div id="cyc-timer">0:05</div>
-  <div id="cyc-phase">Vapor <span class="mock-badge">MOCK — sin ESP32 real</span></div>
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tcyc-title">Ciclo en Progreso</div><div class="hdr-s" id="tcyc-sub">No abrir la puerta</div></div>
+    <div id="cyc-mid" style="margin-left:auto;font-family:monospace,monospace;font-size:11px;color:var(--blue);"></div>
+  </div>
+  <div class="cyc-body">
+    <div class="cyc-warn" id="tcyc-warn">⚠️ NO ABRIR LA PUERTA DURANTE EL PROCESO</div>
+    <div class="cyc-ph-lbl" id="cyc-ph-lbl">FASE 1 DE 3</div>
+    <div class="cyc-ico" id="cyc-ico">🌫️</div>
+    <div class="cyc-ph-nm" id="cyc-ph-nm">Vaporizando</div>
+    <div class="cyc-timer" id="cyc-timer">0:45</div>
+    <div class="cyc-prog-tr"><div class="cyc-prog-fl" id="cyc-prog" style="width:100%"></div></div>
+    <div class="cyc-phases">
+      <div class="cph cur" id="cp0">🌫️ Vapor</div>
+      <div class="cph" id="cp1">💨 Secado</div>
+      <div class="cph" id="cp2">🌸 Aroma</div>
+    </div>
+  </div>
 </div>
 
-<!-- ═══════════════ CYCLE_FINISHED ═══════════════ -->
+<!-- DONE -->
 <div class="scr" id="s-done">
-  <img class="done-mascot" src="assets/img/img05.png" alt="HX02">
-  <h2>¡Listo!</h2>
-  <p>Retira tu casco.</p>
-  <button class="btn-act blue" onclick="FreshTouchApp.returnToIdle()">Volver al inicio</button>
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tdone-title">Proceso Completado</div><div class="hdr-s" id="tdone-sub-h">Tu casco esta listo</div></div>
+  </div>
+  <div class="done-body">
+    <img class="done-mascot" src="assets/img/img05.png" alt="FreshTouch">
+    <div class="done-ttl" id="tdone-main">Tu casco esta limpio!</div>
+    <div class="done-sub-txt" id="tdone-sub">Proceso finalizado. Puedes retirar tu casco ahora.</div>
+    <div class="inv-prompt">
+      <span style="font-size:22px">🧾</span>
+      <div class="inv-prompt-txt">
+        <b id="tinv-ask">Deseas factura electronica?</b>
+        <span id="tinv-ask-s">Recibela en tu correo al instante</span>
+      </div>
+      <button class="btn-inv" id="tinv-btn" onclick="go('s-invoice')">FACTURA</button>
+    </div>
+    <div class="done-acts">
+      <button class="btn-extra" id="btn-extra" onclick="startExtraDry()">💨 Casco Mojado — Secado Extra +1min</button>
+      <div class="extra-run" id="extra-run">💨 <span id="extra-timer">1:00</span></div>
+    </div>
+    <button class="btn-finish" id="tdone-fin" onclick="finishSess()">Finalizar</button>
+    <p class="done-auto"><span id="tdone-auto">Cierra automaticamente en</span> <span id="done-auto-n">30</span>s</p>
+  </div>
 </div>
 
-<!-- ═══════════════ ADMIN — PIN ═══════════════ -->
-<div class="scr" id="s-admin-pin">
-  <img class="pin-logo" src="assets/img/img04.png" alt="HYDROX">
-  <h2>Modo Administrador <span class="mock-badge">MOCK</span></h2>
-  <div id="pin-display">______</div>
-  <div class="pin-pad" id="pin-pad"></div>
-  <button class="btn-act" onclick="FreshTouchApp.closeAdminEntry()">Cancelar</button>
+<!-- INVOICE -->
+<div class="scr" id="s-invoice">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t" id="tinv-title">Factura Electronica</div><div class="hdr-s" id="tinv-sub">SAT Guatemala - INFILE</div></div>
+    <button class="btn-back" onclick="go('s-done')" id="tinv-back">← Volver</button>
+  </div>
+  <div class="inv-body">
+    <div class="inv-form">
+      <h2>🧾 <span id="tinv-h2">Datos de Facturacion</span></h2>
+      <p id="tinv-desc">Ingresa tus datos para recibir tu factura certificada por SAT.</p>
+      <div class="frow">
+        <div class="fld" style="flex:1"><label class="flbl" id="tinv-nit">NIT o CF</label>
+          <input class="finp" id="inv-nit" placeholder="CF o 1234567-8" maxlength="12"></div>
+        <div class="fld" style="flex:2"><label class="flbl" id="tinv-name">Nombre / Razon Social</label>
+          <input class="finp" id="inv-name" placeholder="Nombre completo"></div>
+      </div>
+      <div class="fld"><label class="flbl" id="tinv-email">Correo Electronico</label>
+        <input class="finp" id="inv-email" placeholder="tucorreo@email.com" type="email"></div>
+      <div class="fld"><label class="flbl" id="tinv-phone">Telefono (opcional)</label>
+        <input class="finp" id="inv-phone" placeholder="5555-5555" type="tel"></div>
+      <button class="btn-inv-submit" id="tinv-submit" onclick="submitInvoice()">📧 EMITIR Y ENVIAR FACTURA</button>
+      <div class="inv-sim" id="tinv-sim">Modo simulacion (mock Fase 1) - Cubo/INFILE aun no integrados</div>
+    </div>
+  </div>
 </div>
 
-<!-- ═══════════════ ADMIN — PANEL ═══════════════ -->
-<div class="scr" id="s-admin-panel">
-  <div style="display:flex;align-items:center;gap:8px;">
+<!-- ADMIN -->
+<div class="scr" id="s-admin">
+  <div class="adm-hdr">
     <img class="adm-hdr-logo" src="assets/img/img04.png" alt="HYDROX">
-    <h2>Panel de Administración <span class="mock-badge">MOCK</span></h2>
+    <div>
+      <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px" id="tadm-title">Panel de Administracion</div>
+      <div style="font-size:10px;color:rgba(255,255,255,.3)" id="adm-mid">Maquina HX02</div>
+    </div>
+    <div class="role-bdg r-sa" id="role-bdg">SUPER ADMIN <span class="mock-badge">MOCK</span></div>
+    <button class="btn-exit" id="tadm-exit" onclick="exitAdmin()">Salir</button>
   </div>
-
-  <div class="admin-panel-section">
-    <h3>Identidad de máquina</h3>
-    <div id="admin-config-rows"></div>
-  </div>
-
-  <div class="admin-panel-section">
-    <h3>Diagnóstico</h3>
-    <div id="admin-diag-rows"></div>
-    <button onclick="FreshTouchApp.runDiagnostics()">Probar conexiones</button>
-  </div>
-
-  <div class="admin-panel-section">
-    <h3>Exportar / Reset</h3>
-    <button onclick="FreshTouchApp.exportConfig()">Exportar configuración (sin secretos)</button>
-    <button onclick="FreshTouchApp.resetMachine()">Reset de máquina (mock)</button>
-  </div>
-
-  <button class="btn-act" onclick="FreshTouchApp.logoutAdmin()">Salir del modo Admin</button>
+  <div class="adm-body" id="adm-body"></div>
 </div>
+
+<!-- PIN -->
+<div id="pin-ov">
+  <div class="pin-panel">
+    <img class="pin-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div class="pin-t" id="tpin-title">Acceso Restringido</div>
+    <div class="pin-s" id="tpin-sub">Ingresa tu PIN</div>
+    <div class="pin-hint" id="tpin-hint">PIN de administrador (mock, Fase 1)</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+      <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+    </div>
+    <div class="pin-err" id="pin-err"></div>
+    <div class="pin-pad">
+      <button class="pin-btn" onclick="pinTap('1')">1</button><button class="pin-btn" onclick="pinTap('2')">2</button><button class="pin-btn" onclick="pinTap('3')">3</button>
+      <button class="pin-btn" onclick="pinTap('4')">4</button><button class="pin-btn" onclick="pinTap('5')">5</button><button class="pin-btn" onclick="pinTap('6')">6</button>
+      <button class="pin-btn" onclick="pinTap('7')">7</button><button class="pin-btn" onclick="pinTap('8')">8</button><button class="pin-btn" onclick="pinTap('9')">9</button>
+      <button class="pin-btn can" onclick="closePIN()">CANCEL</button><button class="pin-btn" onclick="pinTap('0')">0</button><button class="pin-btn del" onclick="pinTap('DEL')">&#9003;</button>
+    </div>
+    <button class="pin-enter" id="tpin-enter" onclick="checkPIN()">ENTRAR</button>
+  </div>
+</div>
+
+<!-- EMERGENCY (marcado real portado; no cableado a ESP32 real en Fase 1) -->
+<div id="emg-modal">
+  <div class="emg-panel">
+    <div style="font-size:38px;margin-bottom:8px">🚨</div>
+    <div class="emg-t" id="temg-title">Apertura de Emergencia</div>
+    <div class="emg-s" id="temg-sub">Esta accion abrira la puerta y quedara registrada.</div>
+    <button class="btn-emg-open" id="temg-open" onclick="closeEmg()">🔓 ABRIR PUERTA AHORA</button>
+    <button class="btn-emg-cls" id="temg-cancel" onclick="closeEmg()">Cancelar</button>
+  </div>
+</div>
+
+<!-- SUSPENDED -->
+<div id="susp-ov">
+  <div class="susp-ico">🔒</div>
+  <div class="susp-t" id="tsusp-title">Servicio No Disponible</div>
+  <div class="susp-s" id="susp-msg">Este equipo se encuentra temporalmente fuera de servicio.</div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script type="module" src="src/main.js"></script>
 </body>

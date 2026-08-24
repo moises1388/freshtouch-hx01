@@ -1,5 +1,17 @@
 // Equivalente modular de go(id) en app.js de HX01 — mismo patrón visual
-// (.scr / .scr.on), reimplementado aquí, no importado de HX01.
+// (.scr / .scr.on), mismo comportamiento.
+//
+// Decisión revisada (corrección de fidelidad visual): la primera versión
+// de Fase 1 hacía que operationStateMachine.js decidiera qué pantalla
+// mostrar (un estado abstracto -> una pantalla). Eso obligó a simplificar
+// las pantallas reales de HX01 (que son más granulares: s-plan, s-payment,
+// s-qr, s-code son 4 pantallas donde el diseño abstracto solo preveía
+// SERVICE_SELECTED y WAITING_PAYMENT). Ahora go() vuelve a ser, como en
+// HX01, el mecanismo primario de navegación — operationState sigue
+// existiendo y sigue siendo real (ver operationState/operationStateMachine.js
+// y sus tests), pero como registro de los checkpoints de la sesión
+// (servicio elegido, pago aprobado, puerta abierta, ciclo iniciado/
+// terminado), no como el que decide qué pantalla pintar.
 
 function showScreen(screenId) {
   document.querySelectorAll('.scr').forEach((el) => el.classList.remove('on'));
@@ -10,28 +22,4 @@ function showScreen(screenId) {
   target.classList.add('on');
 }
 
-// Mapa OperationState -> id de pantalla. Un único lugar que traduce el
-// estado abstracto de operationStateMachine.js a qué ve el cliente —
-// si el día de mañana se agrega un estado nuevo y falta aquí, esto debe
-// fallar fuerte (ver assertScreenForEveryState en tests), no mostrar una
-// pantalla en blanco.
-const SCREEN_BY_STATE = Object.freeze({
-  IDLE: 's-idle',
-  SERVICE_SELECTED: 's-service',
-  WAITING_PAYMENT: 's-payment',
-  PAYMENT_APPROVED: 's-ready',
-  READY_TO_START: 's-ready',
-  DOOR_OPEN: 's-door',
-  CYCLE_RUNNING: 's-cycle',
-  CYCLE_FINISHED: 's-done',
-});
-
-function showScreenForState(state) {
-  const screenId = SCREEN_BY_STATE[state];
-  if (!screenId) {
-    throw new Error(`[navigation] Estado "${state}" no tiene pantalla asignada en SCREEN_BY_STATE`);
-  }
-  showScreen(screenId);
-}
-
-export { showScreen, showScreenForState, SCREEN_BY_STATE };
+export { showScreen };
