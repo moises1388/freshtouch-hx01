@@ -24,6 +24,22 @@ test('hasSecret es false para una clave nunca guardada', async () => {
   assert.equal(await bridge.hasSecret('nunca-guardada'), false);
 });
 
+test('clearSecret: borra la presencia de una clave guardada, sin haber retenido nunca el valor', async () => {
+  const bridge = createMockNativeBridge();
+  await bridge.saveSecret('cuboApiKey', 'valor-secreto-de-prueba');
+  assert.equal(await bridge.hasSecret('cuboApiKey'), true);
+  const result = await bridge.clearSecret('cuboApiKey');
+  assert.equal(result.cleared, true);
+  assert.equal(result.mock, true);
+  assert.equal(await bridge.hasSecret('cuboApiKey'), false);
+});
+
+test('clearSecret sobre una clave que nunca existió no lanza, y reporta cleared:false', async () => {
+  const bridge = createMockNativeBridge();
+  const result = await bridge.clearSecret('nunca-guardada');
+  assert.equal(result.cleared, false);
+});
+
 test('testConnection del mock nunca contacta nada real, y lo declara explícitamente', async () => {
   const bridge = createMockNativeBridge();
   const result = await bridge.testConnection('esp32');

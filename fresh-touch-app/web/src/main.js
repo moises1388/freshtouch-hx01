@@ -20,12 +20,19 @@ import { createMockNativeBridge } from './nativeBridge/mockNativeBridge.js';
 import { createAdminSession } from './admin/adminSession.js';
 import { loadMockMachineConfig } from './machineConfig/mockMachineConfig.js';
 import { assertValidMachineConfig } from './machineConfig/machineConfigContract.js';
+import { createMachineConfigStore } from './machineConfig/machineConfigStore.js';
+import { validateDraft } from './machineConfig/provisioningValidation.js';
 import { showScreen } from './ui/navigation.js';
 import { initBubbles } from './ui/bubbles.js';
 import { t, getLang, setLang, applyLang } from './ui/i18n.js';
 
 // --- Composición de la app ---
-const machineConfig = loadMockMachineConfig();
+// Fase 2: si la máquina ya fue configurada (provisioning, ver más abajo),
+// se usa esa configuración guardada; si no, se sigue arrancando con el
+// mock de Fase 1 — nunca se auto-guarda el mock, así "isProvisioned()"
+// solo es true después de un Guardar explícito desde el panel de admin.
+const configStore = createMachineConfigStore();
+let machineConfig = configStore.load() || loadMockMachineConfig();
 assertValidMachineConfig(machineConfig);
 
 const operation = createOperationSession();
@@ -45,6 +52,8 @@ const STATE = {
   admTimer: null,
   role: null,
   doorOpen: false,
+  provisioningErrors: {},
+  provisioningDraft: null,
 };
 
 let toastTmr = null;
@@ -164,12 +173,16 @@ async function checkPIN() {
 function exitAdmin() {
   admin.logout();
   STATE.role = null;
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
   go('s-idle');
 }
 
 async function renderAdminBody() {
   const diag = await nativeBridge.getDiagnostics();
   const body = document.getElementById('adm-body');
+  const midEl = document.getElementById('adm-mid');
+  if (midEl) midEl.textContent = `Máquina ${machineConfig.machineId}`;
   const configRows = Object.entries(machineConfig)
     .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
     .join('');
@@ -177,13 +190,156 @@ async function renderAdminBody() {
     .filter(([k]) => k !== 'mock')
     .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v diag-mock">${v}</span></div>`)
     .join('');
+  const hasSecret = await nativeBridge.hasSecret('cuboApiKey');
   body.innerHTML = `
     <div class="admin-panel-section"><h3>Identidad de máquina</h3>${configRows}</div>
     <div class="admin-panel-section"><h3>Diagnóstico</h3>${diagRows}</div>
+    ${renderProvisioningSection(hasSecret)}
     <div class="admin-panel-section"><h3>Exportar / Reset</h3>
       <button onclick="window.__ftaExportConfig()">Exportar configuración (sin secretos)</button>
       <button onclick="window.__ftaResetMachine()">Reset de máquina (mock)</button>
     </div>`;
+}
+
+// --- Provisioning (Fase 2) ---
+// Formulario dentro del panel de admin — nunca se renderiza fuera de
+// #adm-body, y #adm-body nunca tiene contenido en index.html (solo se
+// llena vía renderAdminBody(), que solo se invoca después de un PIN
+// correcto en checkPIN()). El cliente normal jamás ve este formulario.
+function renderProvisioningSection(hasSecret) {
+  // Si el último intento de guardar falló la validación, se sigue
+  // mostrando lo que la persona escribió (STATE.provisioningDraft), no la
+  // config vieja — si no, el error aparecería junto a un campo que ya no
+  // muestra el valor inválido que lo causó, muy confuso. Con guardado
+  // exitoso o al abrir el panel por primera vez, provisioningDraft es
+  // null y se muestra machineConfig (la config activa real).
+  const c = STATE.provisioningDraft || machineConfig;
+  const provisioned = configStore.isProvisioned();
+  const errors = STATE.provisioningErrors || {};
+  const esc = (v) => String(v ?? '').replace(/"/g, '&quot;');
+  // errorKey usa las mismas claves que devuelve provisioningValidation.js
+  // (machineId, esp32Address, "prices.basic", ...) — deliberadamente
+  // distintas del id del <input> (prov-machineId, etc.) para no acoplar
+  // el esquema de validación a los ids del DOM.
+  const errFor = (errorKey) => (errors[errorKey] ? `<div class="prov-err">${errors[errorKey]}</div>` : '');
+  const field = (id, label, value, errorKey, opts = {}) => `
+    <div class="prov-field">
+      <label class="prov-lbl" for="${id}">${label}</label>
+      <input class="prov-inp" id="${id}" type="${opts.type || 'text'}" value="${esc(value)}">
+      ${errFor(errorKey)}
+    </div>`;
+  const select = (id, label, value, errorKey, options) => `
+    <div class="prov-field">
+      <label class="prov-lbl" for="${id}">${label}</label>
+      <select class="prov-inp" id="${id}">
+        ${options.map((o) => `<option value="${o}" ${o === value ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>
+      ${errFor(errorKey)}
+    </div>`;
+
+  return `
+    <div class="admin-panel-section">
+      <h3>Provisioning — Configuración de máquina</h3>
+      <div class="prov-status ${provisioned ? 'diag-ok' : 'diag-mock'}">
+        ${provisioned ? '✅ Máquina configurada y guardada' : '⚠️ Sin configuración guardada — mostrando valores mock (Fase 1)'}
+      </div>
+
+      <div class="prov-group-title">Identidad</div>
+      ${field('prov-machineId', 'Machine ID', c.machineId, 'machineId')}
+      ${field('prov-machineName', 'Nombre de máquina', c.machineName, 'machineName')}
+      ${field('prov-ownerId', 'Owner ID', c.ownerId, 'ownerId')}
+      ${field('prov-tenantId', 'Tenant ID', c.tenantId, 'tenantId')}
+      ${field('prov-location', 'Ubicación', c.location, 'location')}
+
+      <div class="prov-group-title">ESP32</div>
+      ${field('prov-esp32Id', 'ESP32 ID', c.esp32Id, 'esp32Id')}
+      ${field('prov-esp32Address', 'ESP32 dirección/IP', c.esp32Address, 'esp32Address')}
+
+      <div class="prov-group-title">Precios</div>
+      ${field('prov-priceBasic', 'Precio Básico', c.prices.basic, 'prices.basic', { type: 'number' })}
+      ${field('prov-pricePremium', 'Precio Premium', c.prices.premium, 'prices.premium', { type: 'number' })}
+
+      <div class="prov-group-title">Pago</div>
+      ${select('prov-paymentProvider', 'Proveedor de pago', c.paymentProvider, 'paymentProvider', ['mock', 'cubo'])}
+      ${select('prov-cuboEnvironment', 'Cubo environment', c.cuboEnvironment, 'cuboEnvironment', ['sandbox', 'production'])}
+      ${field('prov-cuboPosId', 'Cubo POS ID', c.cuboPosId, 'cuboPosId')}
+      ${field('prov-cuboPosSerial', 'Cubo POS Serial', c.cuboPosSerial, 'cuboPosSerial')}
+
+      <div class="prov-group-title">Secretos (SecretProvider — mock, NOT PRODUCTION)</div>
+      <div class="admin-panel-row">
+        <span class="k">Cubo API Key</span>
+        <span class="v ${hasSecret ? 'diag-ok' : 'diag-mock'}">${hasSecret ? 'configurada (mock, valor no retenido)' : 'no configurada'}</span>
+      </div>
+      <div class="mock-controls">
+        <span class="mock-controls-label">Solo simula la existencia — no hay campo real para escribir la clave (eso llega en Fase 6 con Keystore)</span>
+        <button onclick="window.__ftaSimSetSecret()">Simular guardar Cubo API Key (mock)</button>
+        <button onclick="window.__ftaSimClearSecret()">Borrar (mock)</button>
+      </div>
+
+      <div class="prov-actions">
+        <button class="prov-save" onclick="window.__ftaSaveProvisioning()">Guardar configuración</button>
+        <button class="prov-restore" onclick="window.__ftaRestoreProvisioning()">Restaurar a mock</button>
+      </div>
+    </div>`;
+}
+
+function readProvisioningDraft() {
+  const val = (id) => document.getElementById(id).value.trim();
+  return {
+    machineId: val('prov-machineId'),
+    machineName: val('prov-machineName'),
+    ownerId: val('prov-ownerId'),
+    tenantId: val('prov-tenantId'),
+    location: val('prov-location'),
+    esp32Id: val('prov-esp32Id'),
+    esp32Address: val('prov-esp32Address'),
+    prices: {
+      basic: Number(val('prov-priceBasic')),
+      premium: Number(val('prov-pricePremium')),
+    },
+    paymentProvider: val('prov-paymentProvider'),
+    cuboEnvironment: val('prov-cuboEnvironment'),
+    cuboPosId: val('prov-cuboPosId'),
+    cuboPosSerial: val('prov-cuboPosSerial'),
+  };
+}
+
+async function saveProvisioning() {
+  const draft = readProvisioningDraft();
+  const { valid, errors } = validateDraft(draft);
+  if (!valid) {
+    STATE.provisioningErrors = errors;
+    STATE.provisioningDraft = draft; // conserva lo escrito para que la persona pueda corregirlo, no lo pierde
+    await renderAdminBody();
+    toast('Revisa los campos marcados en rojo', 'er');
+    return;
+  }
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
+  machineConfig = configStore.save(draft);
+  applyLang(machineConfig.prices);
+  await renderAdminBody();
+  toast('Configuración guardada', 'ok');
+}
+
+async function restoreProvisioning() {
+  configStore.reset();
+  machineConfig = loadMockMachineConfig();
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
+  applyLang(machineConfig.prices);
+  await renderAdminBody();
+  toast('Restaurado a configuración mock', 'in');
+}
+
+async function simSetSecret() {
+  await nativeBridge.saveSecret('cuboApiKey', 'MOCK-VALUE-NEVER-RETAINED');
+  await renderAdminBody();
+}
+
+async function simClearSecret() {
+  await nativeBridge.clearSecret('cuboApiKey');
+  await renderAdminBody();
 }
 
 function exportConfig() {
@@ -476,3 +632,7 @@ window.submitInvoice = submitInvoice;
 window.closeEmg = closeEmg;
 window.__ftaExportConfig = exportConfig;
 window.__ftaResetMachine = resetMachine;
+window.__ftaSaveProvisioning = saveProvisioning;
+window.__ftaRestoreProvisioning = restoreProvisioning;
+window.__ftaSimSetSecret = simSetSecret;
+window.__ftaSimClearSecret = simClearSecret;

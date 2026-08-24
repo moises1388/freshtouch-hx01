@@ -25,6 +25,12 @@ function createMockNativeBridge() {
     return secretPresence.has(key);
   }
 
+  async function clearSecret(key) {
+    const existed = secretPresence.has(key);
+    secretPresence.delete(key);
+    return { cleared: existed, mock: true };
+  }
+
   async function testConnection(target) {
     // MOCK: nunca contacta nada real (ni ESP32, ni Cubo, ni CORE).
     return { target, connected: true, mock: true, note: 'MOCK — ninguna conexión real fue intentada' };
@@ -50,7 +56,7 @@ function createMockNativeBridge() {
     };
   }
 
-  return { saveSecret, hasSecret, testConnection, authenticateAdmin, getDiagnostics };
+  return { saveSecret, hasSecret, clearSecret, testConnection, authenticateAdmin, getDiagnostics };
 }
 
 export { createMockNativeBridge };

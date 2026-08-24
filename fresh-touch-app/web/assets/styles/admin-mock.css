@@ -81,3 +81,73 @@
 .diag-ok { color: var(--green); }
 .diag-mock { color: var(--yellow); }
 .diag-bad { color: var(--red); }
+
+/* Provisioning (Fase 2) — solo vive dentro de #adm-body, nunca en la
+   interfaz normal del cliente. Reutiliza las variables de theme.css, no
+   inventa una paleta nueva. */
+
+.prov-status {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.prov-group-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin: 14px 0 6px;
+}
+
+.prov-field {
+  margin-bottom: 8px;
+}
+
+.prov-lbl {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 3px;
+}
+
+.prov-inp {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.prov-err {
+  color: var(--red);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.prov-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.prov-save, .prov-restore {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.prov-save { background: var(--green); color: #06210f; }
+.prov-restore { background: transparent; border: 1px solid var(--border); color: rgba(255, 255, 255, 0.7); }
