@@ -5,23 +5,29 @@
 // no cambie ni una línea.
 
 function createAdminSession({ nativeBridge }) {
-  let authenticated = false;
+  // Se guarda el rol ('sa'|'ow'|'tc'|'tn'), no solo un booleano — el
+  // nivel de acceso real de HX01 depende de cuál de los 4 PINes entró
+  // (ver admin/mockAdminAuth.js), no solo de si entró alguno válido.
+  let role = null;
 
   async function authenticate(pin) {
-    const ok = await nativeBridge.authenticateAdmin(pin);
-    authenticated = Boolean(ok);
-    return authenticated;
+    role = await nativeBridge.authenticateAdmin(pin);
+    return isAuthenticated();
   }
 
   function isAuthenticated() {
-    return authenticated;
+    return role !== null && role !== undefined;
+  }
+
+  function getRole() {
+    return role;
   }
 
   function logout() {
-    authenticated = false;
+    role = null;
   }
 
-  return { authenticate, isAuthenticated, logout };
+  return { authenticate, isAuthenticated, getRole, logout };
 }
 
 export { createAdminSession };

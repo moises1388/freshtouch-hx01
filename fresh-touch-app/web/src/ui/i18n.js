@@ -7,7 +7,7 @@ const T = {
   es: {
     idle_title: 'Limpieza Profesional<br>para tu <span>Casco</span>',
     idle_sub: 'Vapor &middot; Secado &middot; Aroma &middot; Antibacterial',
-    idle_btn: 'INICIAR LIMPIEZA', idle_price: 'Basico Q20 &middot; Premium Q35',
+    idle_btn: 'INICIAR LIMPIEZA',
     f1: '💧 Vapor', f2: '💨 Secado', f3: '🌸 Aroma',
     plan_title: 'Elige tu Plan', plan_sub: 'Selecciona el servicio',
     basic_badge: 'BASICO', premium_badge: '⭐ PREMIUM',
@@ -45,6 +45,9 @@ const T = {
     inv_submit: '📧 EMITIR Y ENVIAR FACTURA',
     inv_sim: 'Modo simulacion (mock Fase 1) - Cubo/INFILE aun no integrados',
     adm_title: 'Panel de Administracion', adm_exit: 'Salir',
+    r_sa: '⭐ SUPER ADMIN', r_ow: '🏪 DUENO', r_tc: '🔧 TECNICO', r_tn: '🏠 INQUILINO',
+    prov_locked: '🔒 Solo Super Admin (Hydrox) puede ver o cambiar la configuracion de la maquina.',
+    identity_locked: '🔒 Esta cuenta no tiene permiso para ver la identidad de la maquina.',
     pin_title: 'Acceso Restringido', pin_sub: 'Ingresa tu PIN',
     pin_hint: 'PIN de administrador (mock, Fase 1)',
     pin_enter: 'ENTRAR',
@@ -67,7 +70,7 @@ const T = {
   en: {
     idle_title: 'Professional Cleaning<br>for your <span>Helmet</span>',
     idle_sub: 'Steam &middot; Drying &middot; Aroma &middot; Antibacterial',
-    idle_btn: 'START CLEANING', idle_price: 'Basic Q20 &middot; Premium Q35',
+    idle_btn: 'START CLEANING',
     f1: '💧 Steam', f2: '💨 Drying', f3: '🌸 Aroma',
     plan_title: 'Choose Your Plan', plan_sub: 'Select the service',
     basic_badge: 'BASIC', premium_badge: '⭐ PREMIUM',
@@ -105,6 +108,9 @@ const T = {
     inv_submit: '📧 ISSUE AND SEND INVOICE',
     inv_sim: 'Simulation mode (Fase 1 mock) - Cubo/INFILE not integrated yet',
     adm_title: 'Administration Panel', adm_exit: 'Exit',
+    r_sa: '⭐ SUPER ADMIN', r_ow: '🏪 OWNER', r_tc: '🔧 TECHNICIAN', r_tn: '🏠 TENANT',
+    prov_locked: '🔒 Only Super Admin (Hydrox) can view or change the machine configuration.',
+    identity_locked: '🔒 This account is not allowed to view the machine identity.',
     pin_title: 'Restricted Access', pin_sub: 'Enter your PIN',
     pin_hint: 'Administrator PIN (mock, Fase 1)',
     pin_enter: 'ENTER',
@@ -156,7 +162,14 @@ function applyLang(prices) {
   set('ti-title', 'innerHTML', l.idle_title);
   set('ti-sub', 'innerHTML', l.idle_sub);
   set('ti-btn', 'textContent', l.idle_btn);
-  set('ti-price', 'innerHTML', l.idle_price);
+  // idle_price se arma aquí, no como texto fijo en T — así nunca vuelve a
+  // desincronizarse de machineConfig.prices después de un cambio via
+  // Provisioning (Fase 2), a diferencia del bug original donde HX01
+  // horneaba "Q20 · Q35" como string literal en la traducción.
+  const idlePriceLabel = getLang() === 'en'
+    ? `Basic Q${prices.basic} &middot; Premium Q${prices.premium}`
+    : `Basico Q${prices.basic} &middot; Premium Q${prices.premium}`;
+  set('ti-price', 'innerHTML', idlePriceLabel);
   set('tf1', 'textContent', l.f1);
   set('tf2', 'textContent', l.f2);
   set('tf3', 'textContent', l.f3);

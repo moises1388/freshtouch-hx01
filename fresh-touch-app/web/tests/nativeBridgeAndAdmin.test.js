@@ -4,7 +4,11 @@ import { createMockNativeBridge } from '../src/nativeBridge/mockNativeBridge.js'
 import { assertImplementsNativeBridgeContract } from '../src/nativeBridge/nativeBridgeContract.js';
 import { createAdminSession } from '../src/admin/adminSession.js';
 import { assertImplementsAdminContract } from '../src/admin/adminContract.js';
-import { MOCK_ADMIN_PIN_NOT_FOR_PRODUCTION } from '../src/admin/mockAdminAuth.js';
+import {
+  MOCK_ADMIN_PIN_NOT_FOR_PRODUCTION,
+  MOCK_PINS_NOT_FOR_PRODUCTION,
+  resolveMockAdminRole,
+} from '../src/admin/mockAdminAuth.js';
 
 test('el mock cumple NativeBridgeContract', () => {
   assert.doesNotThrow(() => assertImplementsNativeBridgeContract(createMockNativeBridge()));
@@ -55,28 +59,57 @@ test('getDiagnostics: todos los campos declarados como MOCK, ninguno inventa un 
   }
 });
 
-test('adminSession cumple AdminContract', () => {
+test('adminSession cumple AdminContract (incluye getRole)', () => {
   const session = createAdminSession({ nativeBridge: createMockNativeBridge() });
   assert.doesNotThrow(() => assertImplementsAdminContract(session));
 });
 
-test('adminSession: PIN correcto autentica', async () => {
+test('resolveMockAdminRole: distingue los 4 roles por longitud Y valor exacto, igual que checkPIN() en HX01 real', () => {
+  assert.equal(resolveMockAdminRole(MOCK_PINS_NOT_FOR_PRODUCTION.sa), 'sa');
+  assert.equal(resolveMockAdminRole(MOCK_PINS_NOT_FOR_PRODUCTION.ow), 'ow');
+  assert.equal(resolveMockAdminRole(MOCK_PINS_NOT_FOR_PRODUCTION.tc), 'tc');
+  assert.equal(resolveMockAdminRole(MOCK_PINS_NOT_FOR_PRODUCTION.tn), 'tn');
+  assert.equal(resolveMockAdminRole('999999'), null);
+  assert.equal(resolveMockAdminRole(''), null);
+  assert.equal(resolveMockAdminRole(undefined), null);
+});
+
+test('resolveMockAdminRole: un valor correcto con la longitud de otro rol no autentica (desambiguación por longitud)', () => {
+  // El valor de owner con un dígito extra no debe "colarse" como sa, ni
+  // el de owner sin su último dígito colarse como tech/tenant.
+  assert.equal(resolveMockAdminRole(`${MOCK_PINS_NOT_FOR_PRODUCTION.ow}9`), null);
+  assert.equal(resolveMockAdminRole(MOCK_PINS_NOT_FOR_PRODUCTION.ow.slice(0, 4)), null);
+});
+
+test('adminSession: el PIN de Super Admin (Hydrox) autentica con rol "sa"', async () => {
   const session = createAdminSession({ nativeBridge: createMockNativeBridge() });
   const ok = await session.authenticate(MOCK_ADMIN_PIN_NOT_FOR_PRODUCTION);
   assert.equal(ok, true);
   assert.equal(session.isAuthenticated(), true);
+  assert.equal(session.getRole(), 'sa');
 });
 
-test('adminSession: PIN incorrecto no autentica', async () => {
+test('adminSession: cada uno de los 4 PINes autentica con su propio rol', async () => {
+  for (const [role, pin] of Object.entries(MOCK_PINS_NOT_FOR_PRODUCTION)) {
+    const session = createAdminSession({ nativeBridge: createMockNativeBridge() });
+    const ok = await session.authenticate(pin);
+    assert.equal(ok, true, `el PIN de ${role} debería autenticar`);
+    assert.equal(session.getRole(), role);
+  }
+});
+
+test('adminSession: PIN incorrecto no autentica y deja el rol en null', async () => {
   const session = createAdminSession({ nativeBridge: createMockNativeBridge() });
   const ok = await session.authenticate('999999');
   assert.equal(ok, false);
   assert.equal(session.isAuthenticated(), false);
+  assert.equal(session.getRole(), null);
 });
 
-test('adminSession: logout revierte la autenticación', async () => {
+test('adminSession: logout revierte la autenticación y limpia el rol', async () => {
   const session = createAdminSession({ nativeBridge: createMockNativeBridge() });
   await session.authenticate(MOCK_ADMIN_PIN_NOT_FOR_PRODUCTION);
   session.logout();
   assert.equal(session.isAuthenticated(), false);
+  assert.equal(session.getRole(), null);
 });

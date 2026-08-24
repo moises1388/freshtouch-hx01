@@ -156,7 +156,7 @@ function updatePinDots() {
 async function checkPIN() {
   const ok = await admin.authenticate(STATE.pinInput);
   if (ok) {
-    STATE.role = 'sa'; // Fase 1: un único PIN mock = super_admin. Fase 6 diferenciará roles vía nativeBridge/Keystore real.
+    STATE.role = admin.getRole(); // 'sa'|'ow'|'tc'|'tn' — ver admin/mockAdminAuth.js
     closePIN();
     renderAdminBody();
     go('s-admin');
@@ -178,27 +178,65 @@ function exitAdmin() {
   go('s-idle');
 }
 
+// Gating por rol — réplica del patrón real de HX01 (app.js renderAdmin(),
+// líneas 810-894): Settings (aquí, Provisioning) es exclusivo de 'sa'.
+// 'ow' puede ver la identidad de la máquina (igual que ve Stats/Codes/
+// Contacts en HX01 real) pero no editarla. 'tc'/'tn' solo ven
+// Diagnóstico — HX01 real les da además el botón de puerta y, a 'tc',
+// el de emergencia; esos widgets no existen todavía en esta arquitectura
+// modular (no hay sesión activa que abrir desde el panel de admin en
+// Fase 1-2) y quedan pendientes para cuando haya un caso de uso real que
+// los necesite, no se inventan aquí solo por paridad visual.
+const ROLE_LABEL_KEY = { sa: 'r_sa', ow: 'r_ow', tc: 'r_tc', tn: 'r_tn' };
+const ROLE_BADGE_CLASS = { sa: 'r-sa', ow: 'r-ow', tc: 'r-tc', tn: 'r-tn' };
+
 async function renderAdminBody() {
+  const role = STATE.role;
+  const l = t();
   const diag = await nativeBridge.getDiagnostics();
   const body = document.getElementById('adm-body');
   const midEl = document.getElementById('adm-mid');
   if (midEl) midEl.textContent = `Máquina ${machineConfig.machineId}`;
-  const configRows = Object.entries(machineConfig)
-    .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
-    .join('');
+
+  const badgeEl = document.getElementById('role-bdg');
+  if (badgeEl) {
+    badgeEl.className = `role-bdg ${ROLE_BADGE_CLASS[role] || 'r-sa'}`;
+    badgeEl.innerHTML = `${l[ROLE_LABEL_KEY[role]] || ''} <span class="mock-badge">MOCK</span>`;
+  }
+
   const diagRows = Object.entries(diag)
     .filter(([k]) => k !== 'mock')
     .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v diag-mock">${v}</span></div>`)
     .join('');
-  const hasSecret = await nativeBridge.hasSecret('cuboApiKey');
-  body.innerHTML = `
-    <div class="admin-panel-section"><h3>Identidad de máquina</h3>${configRows}</div>
-    <div class="admin-panel-section"><h3>Diagnóstico</h3>${diagRows}</div>
-    ${renderProvisioningSection(hasSecret)}
-    <div class="admin-panel-section"><h3>Exportar / Reset</h3>
+
+  const canViewIdentity = role === 'sa' || role === 'ow';
+  const canProvision = role === 'sa';
+
+  let html = '';
+
+  if (canViewIdentity) {
+    const configRows = Object.entries(machineConfig)
+      .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
+      .join('');
+    html += `<div class="admin-panel-section"><h3>Identidad de máquina</h3>${configRows}</div>`;
+  }
+
+  html += `<div class="admin-panel-section"><h3>Diagnóstico</h3>${diagRows}</div>`;
+
+  if (canProvision) {
+    const hasSecret = await nativeBridge.hasSecret('cuboApiKey');
+    html += renderProvisioningSection(hasSecret);
+    html += `<div class="admin-panel-section"><h3>Exportar / Reset</h3>
       <button onclick="window.__ftaExportConfig()">Exportar configuración (sin secretos)</button>
       <button onclick="window.__ftaResetMachine()">Reset de máquina (mock)</button>
     </div>`;
+  } else {
+    html += `<div class="admin-panel-section"><h3>Provisioning — Configuración de máquina</h3>
+      <div class="prov-status diag-mock">${l.prov_locked}</div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
 }
 
 // --- Provisioning (Fase 2) ---

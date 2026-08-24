@@ -5,7 +5,7 @@
 // fase).
 
 function assertImplementsAdminContract(admin) {
-  const requiredMethods = ['authenticate', 'isAuthenticated', 'logout'];
+  const requiredMethods = ['authenticate', 'isAuthenticated', 'getRole', 'logout'];
   const missing = requiredMethods.filter((m) => typeof admin?.[m] !== 'function');
   if (missing.length > 0) {
     throw new Error(`[AdminContract] Implementación incompleta — faltan métodos: ${missing.join(', ')}`);

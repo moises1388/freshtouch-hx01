@@ -39,8 +39,11 @@ function createMockNativeBridge() {
   async function authenticateAdmin(pin) {
     // Ver admin/mockAdminAuth.js — la lógica real de comparación vive ahí
     // para que quede en un solo lugar y quede clarísimamente marcada.
-    const { verifyMockAdminPin } = await import('../admin/mockAdminAuth.js');
-    return verifyMockAdminPin(pin);
+    // Devuelve el rol resuelto ('sa'|'ow'|'tc'|'tn') o null — no un
+    // booleano — porque el nivel de acceso real de HX01 depende de CUÁL
+    // PIN entró, no solo de si entró alguno válido.
+    const { resolveMockAdminRole } = await import('../admin/mockAdminAuth.js');
+    return resolveMockAdminRole(pin);
   }
 
   async function getDiagnostics() {
