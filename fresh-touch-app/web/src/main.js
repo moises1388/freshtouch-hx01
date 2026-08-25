@@ -16,6 +16,7 @@
 import { createOperationSession } from './operationState/operationStateMachine.js';
 import { createMockPaymentProvider } from './payment/mockPaymentProvider.js';
 import { createMockEsp32Controller } from './esp32/mockEsp32Controller.js';
+import { assertCanStartCycle } from './esp32/cycleSafety.js';
 import { createMockNativeBridge } from './nativeBridge/mockNativeBridge.js';
 import { createAdminSession } from './admin/adminSession.js';
 import { loadMockMachineConfig } from './machineConfig/mockMachineConfig.js';
@@ -498,6 +499,14 @@ async function validateCodeMock() {
 
 // --- Sesión (abrir puerta / iniciar) ---
 function activateSess() {
+  // Corrección de Fase 3: antes de esto, CONFIRM_READY nunca se enviaba
+  // — operationState quedaba atascado en PAYMENT_APPROVED para siempre
+  // (OPEN_DOOR no es una transición válida desde ahí), así que
+  // canRunCycle() jamás llegaba a ser true por el flujo real. No era
+  // visible porque nada dependía todavía de ese estado; ahora que
+  // assertCanStartCycle() sí lo exige (ver startCycle()), hace falta que
+  // la cadena de estados avance de verdad.
+  operation.send('CONFIRM_READY');
   STATE.sessStep = 1;
   STATE.doorOpen = false;
   const plan = STATE.plan === 'basic' ? t().basic_name : t().premium_name;
@@ -545,6 +554,21 @@ function sessAction() {
 // --- Ciclo ---
 function startCycle() {
   operation.send('START_CYCLE');
+  // Fail-closed (Fase 3): si el intento de transición de arriba no fue
+  // válido — p. ej. algo llamó a startCycle() sin haber pasado por un
+  // pago aprobado — operation.getState() NO habrá llegado a
+  // CYCLE_RUNNING, y esta guardia lo detiene aquí, antes de emitir
+  // cualquier orden real al ESP32. No es una comprobación cosmética: es
+  // la misma canRunCycle() que ya usan y prueban operationState/ y
+  // esp32/cycleSafety.js.
+  try {
+    assertCanStartCycle(operation.getState());
+  } catch (err) {
+    console.error(err);
+    toast('No se puede iniciar el ciclo: pago no confirmado.', 'er');
+    go('s-idle');
+    return;
+  }
   cyPhIdx = 0;
   document.getElementById('cyc-mid').textContent = machineConfig.machineId;
   go('s-cycle');
@@ -649,6 +673,16 @@ function closeEmg() {
 // --- Arranque ---
 initBubbles();
 applyLang(machineConfig.prices);
+
+// Fase 3: la app intenta conectar con el controlador de ESP32 al
+// arrancar — hoy el mock (siempre exitoso salvo que un test inyecte una
+// falla). No bloquea el resto de la app si falla: un cliente debe poder
+// seguir viendo pantallas / que el admin entre a diagnosticar aunque el
+// ESP32 no responda; lo que sí queda fail-closed es el inicio del ciclo
+// en sí (ver startCycle()), no la app entera.
+esp32.connect().catch((err) => {
+  console.error('[ESP32] No se pudo conectar al arrancar:', err);
+});
 
 window.go = go;
 window.toggleLang = toggleLang;
