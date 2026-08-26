@@ -15,6 +15,9 @@
 
 import { createOperationSession } from './operationState/operationStateMachine.js';
 import { createMockPaymentProvider } from './payment/mockPaymentProvider.js';
+import { createCuboCardProvider } from './payment/cuboCardProvider.js';
+import { STATES as CUBO_STATES } from './payment/paymentStateMachine.js';
+import { setApiKey, getApiKey, hasApiKey, clearApiKey } from './payment/cubo/apiKeySession.js';
 import { createMockEsp32Controller } from './esp32/mockEsp32Controller.js';
 import { assertCanStartCycle } from './esp32/cycleSafety.js';
 import { createMockNativeBridge } from './nativeBridge/mockNativeBridge.js';
@@ -41,6 +44,32 @@ const payment = createMockPaymentProvider({ simulatedDelayMs: 0 });
 const esp32 = createMockEsp32Controller();
 const nativeBridge = createMockNativeBridge();
 const admin = createAdminSession({ nativeBridge });
+
+// Pago real con Cubo QPOS Cute (tarjeta) — a diferencia de `payment`
+// arriba (mock, usado por QR/código de caja/promoción, sin tocar), este
+// SÍ habla con hardware real. No se construye aquí de una vez: mode
+// 'web-sdk' exige que window.CuboPagoSDK ya exista (el <script> de
+// index.html) y que haya una API key de sesión (ver
+// payment/cubo/apiKeySession.js) — ninguna de las dos está garantizada al
+// cargar la página. Se construye perezosamente en getCuboPayment(), la
+// primera vez que alguien intenta pagar con POS.
+let cuboPayment = null;
+
+function getCuboPayment() {
+  if (!cuboPayment) {
+    cuboPayment = createCuboCardProvider({ mode: 'web-sdk', machineConfig, apiKey: getApiKey() });
+    cuboPayment.onResult(renderPosScreen);
+  }
+  return cuboPayment;
+}
+
+// Se llama cuando cambia la API key de sesión (ver renderAdminBody): el
+// proveedor viejo, si existe, queda descartado — la próxima vez que
+// alguien pague con POS, getCuboPayment() construye uno nuevo con la
+// clave nueva. No se reutiliza el proveedor viejo con una clave distinta.
+function resetCuboPayment() {
+  cuboPayment = null;
+}
 
 // --- Estado local de la sesión de UI — mismas variables que STATE en app.js de HX01 ---
 const STATE = {
@@ -315,6 +344,21 @@ function renderProvisioningSection(hasSecret) {
         <button onclick="window.__ftaSimClearSecret()">Borrar (mock)</button>
       </div>
 
+      <div class="prov-group-title">Cubo — API Key real (integración de esta fase)</div>
+      <div class="admin-panel-row">
+        <span class="k">Estado (sesión del navegador)</span>
+        <span class="v ${hasApiKey() ? 'diag-ok' : 'diag-bad'}">${hasApiKey() ? 'configurada para esta sesión' : 'no configurada'}</span>
+      </div>
+      <div class="mock-controls">
+        <span class="mock-controls-label">Vive solo en memoria mientras esta pestaña esté abierta — nunca se guarda en NVS ni en ningún almacenamiento persistente del navegador. Se pierde al recargar. Necesaria para "Pagar con Tarjeta" en la pantalla de cliente.</span>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-cuboApiKey">Cubo API Key</label>
+          <input class="prov-inp" id="prov-cuboApiKey" type="password" placeholder="Se pierde al recargar la página">
+        </div>
+        <button onclick="window.__ftaSetCuboApiKey()">Usar en esta sesión</button>
+        <button onclick="window.__ftaClearCuboApiKey()">Borrar de esta sesión</button>
+      </div>
+
       <div class="prov-actions">
         <button class="prov-save" onclick="window.__ftaSaveProvisioning()">Guardar configuración</button>
         <button class="prov-restore" onclick="window.__ftaRestoreProvisioning()">Restaurar a mock</button>
@@ -379,6 +423,26 @@ async function simSetSecret() {
 async function simClearSecret() {
   await nativeBridge.clearSecret('cuboApiKey');
   await renderAdminBody();
+}
+
+async function setCuboApiKey() {
+  const input = document.getElementById('prov-cuboApiKey');
+  const value = input ? input.value : '';
+  if (!value) {
+    toast('Escribe una API key antes de usarla', 'er');
+    return;
+  }
+  setApiKey(value);
+  resetCuboPayment(); // fuerza reconstruir el proveedor con la clave nueva
+  await renderAdminBody();
+  toast('API key de Cubo activa para esta sesión (se pierde al recargar)', 'ok');
+}
+
+async function clearCuboApiKey() {
+  clearApiKey();
+  resetCuboPayment();
+  await renderAdminBody();
+  toast('API key de Cubo borrada de esta sesión', 'in');
 }
 
 function exportConfig() {
@@ -457,6 +521,149 @@ async function qrManualConfirm() {
   toast(t().tk.qr_ok, 'ok');
   if (payment.canStartCycle()) operation.send('PAYMENT_APPROVED');
   setTimeout(activateSess, 400);
+}
+
+// --- Pago con tarjeta — POS Cubo QPOS Cute (real, Web Bluetooth) ---
+// A diferencia de QR/código de caja/promoción (mock arriba), esta
+// pantalla habla con hardware real cuando hay una API key de sesión
+// configurada y el script del SDK cargó. Se detiene deliberadamente en
+// PAYMENT_SUCCESS — no llama a activateSess()/ESP32 todavía (autorización
+// explícita de esta fase: el enlace pago->ciclo físico queda desconectado
+// hasta validar el firmware v3 en hardware).
+function openPos() {
+  const price = currentPrice();
+  document.getElementById('pos-amt-lbl').textContent = `Q${price}.00`;
+  document.getElementById('pos-amt-big').textContent = `Q${price}.00`;
+  operation.send('REQUEST_PAYMENT');
+  go('s-pos');
+
+  let provider;
+  try {
+    provider = getCuboPayment();
+  } catch (err) {
+    renderPosScreen({ state: null, event: 'init_failed', message: err.message });
+    return;
+  }
+  const label = STATE.plan === 'basic' ? t().basic_name : t().premium_name;
+  provider.selectService({ label, amount: price });
+  renderPosScreen({ state: provider.getStatus() });
+}
+
+async function posConnect() {
+  // Llamada directamente desde el manejador de click del botón "Conectar
+  // POS" en index.html — a propósito, no envuelta en más async antes del
+  // primer await real: Web Bluetooth exige un gesto de usuario genuino
+  // para el primer emparejamiento, y esta app no intenta simularlo ni
+  // saltárselo.
+  try {
+    await cuboPayment.connectPos();
+    if (cuboPayment.getStatus() === CUBO_STATES.POS_CONNECTED) {
+      await cuboPayment.createPayment();
+    }
+  } catch (err) {
+    toast(`POS: ${err.message}`, 'er');
+  }
+}
+
+function posCancel() {
+  const status = cuboPayment?.getStatus();
+  if (status === CUBO_STATES.WAITING_FOR_CARD || status === CUBO_STATES.PROCESSING_PAYMENT) {
+    cuboPayment.cancelPayment();
+  }
+}
+
+async function posRetry() {
+  try {
+    await cuboPayment.retryPayment();
+    if (cuboPayment.getStatus() === CUBO_STATES.POS_CONNECTED) {
+      await cuboPayment.createPayment();
+    }
+  } catch (err) {
+    toast(`POS: ${err.message}`, 'er');
+  }
+}
+
+// Botón "← Volver" de s-pos — nunca desconecta el POS (requisito
+// explícito: mantener la conexión Bluetooth para el siguiente cliente
+// siempre que sea posible). Si había un cobro en curso, lo cancela antes
+// de salir; si no, simplemente vuelve, dejando al proveedor donde estaba.
+function cancelPos() {
+  posCancel();
+  operation.send('CANCEL');
+  go('s-payment');
+}
+
+function renderPosScreen(snapshot) {
+  const statusEl = document.getElementById('pos-status-txt');
+  const actionsEl = document.getElementById('pos-actions');
+  if (!statusEl || !actionsEl) return; // la pantalla no está montada todavía
+
+  const state = snapshot.state ?? cuboPayment?.getStatus();
+  const connectBtn = '<button class="btn-qr-manual" onclick="posConnect()">Conectar POS</button>';
+  const cancelBtn = '<button class="btn-back" onclick="posCancel()">Cancelar</button>';
+  const retryBtn = '<button class="btn-qr-manual" onclick="posRetry()">Reintentar</button>';
+  const homeBtn = '<button class="btn-back" onclick="go(\'s-idle\')">Volver al inicio</button>';
+
+  if (snapshot.event === 'init_failed') {
+    statusEl.textContent = `No se pudo iniciar el pago con POS: ${snapshot.message}`;
+    actionsEl.innerHTML = '<button class="btn-back" onclick="go(\'s-payment\')">← Volver</button>';
+    return;
+  }
+
+  if (snapshot.event === 'payment_pending') {
+    statusEl.textContent = `⏳ ${snapshot.message || 'No se pudo confirmar el pago con el banco todavía.'}`;
+    actionsEl.innerHTML = cancelBtn;
+    return;
+  }
+
+  switch (state) {
+    case CUBO_STATES.IDLE:
+    case CUBO_STATES.SERVICE_SELECTED:
+    case CUBO_STATES.PAYMENT_METHOD_SELECTED:
+      statusEl.textContent = 'Presiona conectar para continuar';
+      actionsEl.innerHTML = connectBtn;
+      break;
+    case CUBO_STATES.CONNECTING_POS:
+      statusEl.textContent = 'Conectando con el POS — autoriza el emparejamiento Bluetooth si tu navegador lo pide...';
+      actionsEl.innerHTML = '';
+      break;
+    case CUBO_STATES.POS_CONNECTED:
+      statusEl.textContent = 'POS conectado. Iniciando el cobro...';
+      actionsEl.innerHTML = '';
+      break;
+    case CUBO_STATES.WAITING_FOR_CARD:
+      statusEl.textContent = 'Esperando tarjeta — acerca o inserta la tarjeta en el POS';
+      actionsEl.innerHTML = cancelBtn;
+      break;
+    case CUBO_STATES.PROCESSING_PAYMENT:
+      statusEl.textContent = 'Procesando pago...';
+      actionsEl.innerHTML = cancelBtn;
+      break;
+    case CUBO_STATES.PAYMENT_SUCCESS:
+      statusEl.textContent = '✅ Pago aprobado. Listo para iniciar.';
+      actionsEl.innerHTML = homeBtn;
+      operation.send('PAYMENT_APPROVED');
+      break;
+    case CUBO_STATES.PAYMENT_DECLINED:
+      statusEl.textContent = `❌ Pago rechazado.${snapshot.message ? ' ' + snapshot.message : ''}`;
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_CANCELLED:
+      statusEl.textContent = 'Pago cancelado.';
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_ERROR:
+      statusEl.textContent = `⚠️ Error del POS.${snapshot.message ? ' ' + snapshot.message : ''}`;
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_TIMEOUT:
+      statusEl.textContent = 'Tiempo de espera agotado.';
+      actionsEl.innerHTML = retryBtn;
+      break;
+    default:
+      statusEl.textContent = 'Presiona conectar para continuar';
+      actionsEl.innerHTML = connectBtn;
+  }
 }
 
 // --- Código de caja / promoción (mock) ---
@@ -695,6 +902,11 @@ window.selectPlan = selectPlan;
 window.openQR = openQR;
 window.cancelQR = cancelQR;
 window.qrManualConfirm = qrManualConfirm;
+window.openPos = openPos;
+window.posConnect = posConnect;
+window.posCancel = posCancel;
+window.posRetry = posRetry;
+window.cancelPos = cancelPos;
 window.openCode = openCode;
 window.kp = kp;
 window.sessAction = sessAction;
@@ -708,3 +920,5 @@ window.__ftaSaveProvisioning = saveProvisioning;
 window.__ftaRestoreProvisioning = restoreProvisioning;
 window.__ftaSimSetSecret = simSetSecret;
 window.__ftaSimClearSecret = simClearSecret;
+window.__ftaSetCuboApiKey = setCuboApiKey;
+window.__ftaClearCuboApiKey = clearCuboApiKey;

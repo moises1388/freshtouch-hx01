@@ -33,7 +33,17 @@ test('ningún archivo de web/ hace referencia a identificadores operativos de HX
     // archivo (esos sí es legítimo mencionarlos en comentarios para
     // explicar la separación, como ya se hace en varios archivos de esta
     // fase — lo que este chequeo busca es acoplamiento real, no prosa).
-    'CuboPagoSDK', 'sdk.cubopago.com', 'api-payment-sandbox.cubopago.com',
+    //
+    // NOTA: 'CuboPagoSDK' y 'sdk.cubopago.com' se sacaron de esta lista a
+    // partir de la integración real del PaymentProvider de Cubo (payment/
+    // cubo/webSdkCuboAdapter.js, e index.html) — antes de esa fase estaban
+    // prohibidos porque cualquier mención era acoplamiento accidental con
+    // el lab; ahora son exactamente el SDK real que esta fase autorizó
+    // integrar, portado (no copiado a ciegas) desde el lab ya validado con
+    // hardware real. 'api-payment-sandbox.cubopago.com' sigue prohibido:
+    // ese es un endpoint REST distinto que este proyecto nunca ha
+    // necesitado referenciar directamente (ver CUBO-INTEGRATION.md del lab).
+    'api-payment-sandbox.cubopago.com',
     // FreshTouch CORE
     'authorized_user_machine', 'AuditEvent', 'assertExpectedEnvironment',
   ];
@@ -80,5 +90,22 @@ test('capas: ui/ no importa directamente payment/, esp32/, ni nativeBridge/ (sol
         `${path.relative(WEB_ROOT, file)} (capa ui/) no debe importar directamente de "${term}" — la separación pedida en esta fase es real, no solo de carpetas`
       );
     }
+  }
+});
+
+test('payment/ nunca importa nada de esp32/ — el enlace PAYMENT_SUCCESS -> ESP32 permanece desconectado en esta fase', () => {
+  // Arquitectura exigida en la autorización de integración de Cubo real:
+  // PaymentProvider y ESP32 son dos ramas separadas que cuelgan de
+  // operationState, ninguna llama a la otra. requestCycle() en
+  // cuboCardProvider.js consume la autorización localmente y nunca debe
+  // volver a importar esp32/ — si algún día lo hace, este chequeo debe
+  // fallar y forzar una decisión explícita, no dejarlo colarse.
+  const paymentFiles = listJsFiles(path.join(WEB_ROOT, 'src', 'payment'));
+  for (const file of paymentFiles) {
+    const content = fs.readFileSync(file, 'utf8');
+    assert.ok(
+      !content.includes('/esp32/'),
+      `${path.relative(WEB_ROOT, file)} (capa payment/) no debe importar de "/esp32/" — ese enlace queda bloqueado hasta la prueba física del firmware v3`
+    );
   }
 });

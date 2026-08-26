@@ -7,6 +7,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Share+Tech+Mono&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles/theme.css">
 <link rel="stylesheet" href="assets/styles/admin-mock.css">
+<!-- SDK Web oficial de Cubo (pago con tarjeta, QPOS Cute) — versión
+     confirmada como la más confiable contra el propio demo.html del repo
+     oficial de Cubo (ver freshtouch-hx02-cubo-lab/CUBO-INTEGRATION.md).
+     Si esta URL no carga (sin internet, host bloqueado), window.CuboPagoSDK
+     simplemente no existe y src/payment/cubo/webSdkCuboAdapter.js lo
+     reporta con un error explícito al intentar pagar con POS — no falla
+     en silencio. -->
+<script src="https://sdk.cubopago.com/pos/v1.11.0/cubo-pos-sdk-web.js"></script>
 </head>
 <body>
 <div class="bubbles" id="bbl"></div>
@@ -80,6 +88,16 @@
       <div class="qr-badge-sm">CUBO</div>
     </div>
 
+    <!-- Nuevo en esta fase: pago real con tarjeta vía POS Cubo QPOS Cute
+         — no existe en HX01 (que solo tiene QR/caja/promoción); esta
+         opción es exclusiva de la integración de hardware de HX02. -->
+    <div class="pay-opt qr-opt" onclick="openPos()">
+      <span class="pay-ico">💳</span>
+      <div class="pay-title" id="tpay-pos-t">Pagar con Tarjeta</div>
+      <div class="pay-sub" id="tpay-pos-s">POS Cubo QPOS Cute<br>en el mostrador</div>
+      <div class="qr-badge-sm">CUBO</div>
+    </div>
+
     <div class="pay-opt" onclick="openCode('cash')">
       <span class="pay-ico">💵</span>
       <div class="pay-title" id="tpay-cash-t">Pagué en Caja</div>
@@ -110,6 +128,24 @@
     <div class="qr-timer-lbl" id="qr-timer">⏱ 3:00</div>
     <div class="qr-status" id="tqr-status">ESPERANDO CONFIRMACION...</div>
     <button class="btn-qr-manual" onclick="qrManualConfirm()" id="tqr-btn">Confirmar pago manualmente</button>
+  </div>
+</div>
+
+<!-- POS CUBO (tarjeta) — pantalla nueva de esta fase, sin equivalente en
+     HX01. Contenido dinámico, ver renderPosScreen() en main.js. -->
+<div class="scr" id="s-pos">
+  <div class="hdr">
+    <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
+    <div><div class="hdr-t">Pago con Tarjeta</div><div class="hdr-s" id="pos-amt-lbl">Q20.00</div></div>
+    <button class="btn-back" onclick="cancelPos()">← Volver</button>
+  </div>
+  <div class="qr-body">
+    <div class="qr-amt" id="pos-amt-big">Q20.00</div>
+    <div class="qr-brand">💳 <strong>Cubo QPOS Cute</strong></div>
+    <div class="qr-status" id="pos-status-txt">Presiona conectar para continuar</div>
+    <div id="pos-actions">
+      <button class="btn-qr-manual" onclick="posConnect()">Conectar POS</button>
+    </div>
   </div>
 </div>
 
