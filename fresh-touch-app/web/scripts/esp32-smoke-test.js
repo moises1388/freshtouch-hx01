@@ -92,14 +92,12 @@ async function main() {
     const res = await adapter.connect();
     status = res.status;
     record('GET /status', true);
-    console.log('  machineId:      ', status.machineId);
-    console.log('  ip:             ', status.ip);
-    console.log('  rssi:           ', status.rssi);
-    console.log('  uptimeSeconds:  ', status.uptimeSeconds);
-    console.log('  firmwareVersion:', status.firmwareVersion);
-    console.log('  totalCycles:    ', status.totalCycles);
-    console.log('  wifiConnected:  ', status.wifiConnected);
-    console.log('  relays:         ', JSON.stringify(status.relays));
+    // El firmware realmente cargado en el ESP32 (freshtouch_HX02_esp32Final,
+    // v2.1) devuelve un JSON más simple que el .ino de referencia del repo
+    // (machine/ip/rssi/cycles, sin uptimeSeconds/firmwareVersion/
+    // wifiConnected/relays[]) — no se asume una forma fija, se imprime el
+    // JSON completo tal cual responde el ESP32 real.
+    console.log('  JSON crudo de /status:', JSON.stringify(status));
   } catch (err) {
     record('GET /status', false, err.message);
     console.error('\nNo se pudo confirmar /status — se detiene la prueba sin tocar relés.');
