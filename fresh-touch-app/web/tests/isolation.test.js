@@ -109,3 +109,14 @@ test('payment/ nunca importa nada de esp32/ — el enlace PAYMENT_SUCCESS -> ESP
     );
   }
 });
+
+test('esp32/ nunca importa nada de payment/ — el transporte real (Etapa 1) no sabe nada de Cubo', () => {
+  const esp32Files = listJsFiles(path.join(WEB_ROOT, 'src', 'esp32'));
+  for (const file of esp32Files) {
+    const content = fs.readFileSync(file, 'utf8');
+    assert.ok(
+      !content.includes('/payment/'),
+      `${path.relative(WEB_ROOT, file)} (capa esp32/) no debe importar de "/payment/" — esp32HttpClient.js y realEsp32Adapter.js son transporte puro, sin conocer Cubo`
+    );
+  }
+});

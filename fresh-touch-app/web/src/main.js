@@ -19,6 +19,7 @@ import { createCuboCardProvider } from './payment/cuboCardProvider.js';
 import { STATES as CUBO_STATES } from './payment/paymentStateMachine.js';
 import { setApiKey, getApiKey, hasApiKey, clearApiKey } from './payment/cubo/apiKeySession.js';
 import { createMockEsp32Controller } from './esp32/mockEsp32Controller.js';
+import { createRealEsp32Adapter } from './esp32/realEsp32Adapter.js';
 import { assertCanStartCycle } from './esp32/cycleSafety.js';
 import { createMockNativeBridge } from './nativeBridge/mockNativeBridge.js';
 import { createAdminSession } from './admin/adminSession.js';
@@ -39,9 +40,22 @@ const configStore = createMachineConfigStore();
 let machineConfig = configStore.load() || loadMockMachineConfig();
 assertValidMachineConfig(machineConfig);
 
+// Selección de controlador ESP32 — Etapa 1 (smoke test de transporte
+// real). Explícita y fail-closed: machineConfig.esp32Mode='real' es la
+// ÚNICA forma de obtener el adaptador real; cualquier otro valor (o su
+// ausencia, como en loadMockMachineConfig()) usa el mock. Si alguien
+// pide 'real' sin los datos que createRealEsp32Adapter ya exige
+// (esp32Id/esp32Address), esto falla fuerte aquí mismo — nunca cae al
+// mock en silencio.
+function resolveEsp32Controller(config) {
+  if (config.esp32Mode === 'real') return createRealEsp32Adapter({ machineConfig: config });
+  if (config.esp32Mode === undefined || config.esp32Mode === 'mock') return createMockEsp32Controller();
+  throw new Error(`[FreshTouch] machineConfig.esp32Mode desconocido: "${config.esp32Mode}" (debe ser "mock" o "real").`);
+}
+
 const operation = createOperationSession();
 const payment = createMockPaymentProvider({ simulatedDelayMs: 0 });
-const esp32 = createMockEsp32Controller();
+const esp32 = resolveEsp32Controller(machineConfig);
 const nativeBridge = createMockNativeBridge();
 const admin = createAdminSession({ nativeBridge });
 
@@ -909,7 +923,7 @@ applyLang(machineConfig.prices);
 // ESP32 no responda; lo que sí queda fail-closed es el inicio del ciclo
 // en sí (ver startCycle()), no la app entera.
 esp32.connect().catch((err) => {
-  console.error('[ESP32] No se pudo conectar al arrancar:', err);
+  console.error(`[ESP32] connect() (modo "${machineConfig.esp32Mode || 'mock'}", esp32Address="${machineConfig.esp32Address}") falló al arrancar:`, err);
 });
 
 window.go = go;
