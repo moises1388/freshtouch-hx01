@@ -279,6 +279,31 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     notify({ event: 'cycle_complete' });
   }
 
+  // Cierra un pago aprobado cuando todavía NO hay un ESP32 esperando
+  // ejecutar nada físico (fases previas a la integración real) —
+  // consume la autorización igual que requestCycle(), pero NUNCA pasa
+  // por CYCLE_IN_PROGRESS/CYCLE_COMPLETE: no se simula un ciclo que
+  // nunca ocurrió. No toca `adapter` en absoluto — no desconecta el POS,
+  // no lo reconecta, no le manda nada — la conexión Bluetooth sigue
+  // exactamente como estaba. Deja el estado en IDLE, listo para que el
+  // siguiente cliente pase por selectService() -> connectPos() (que ya
+  // reutiliza la conexión viva sola) -> createPayment().
+  //
+  // Mutuamente excluyente con requestCycle() para el mismo pago: el que
+  // se llame primero consume PAYMENT_SUCCESS; el otro, llamado después,
+  // se rechaza con su propio mensaje — ninguno de los dos puede duplicar
+  // la autorización de un solo pago aprobado.
+  function acknowledgePaymentAndReturnToIdle() {
+    const state = session.getState();
+    if (!canStartCycle(state)) {
+      throw new Error(
+        `[CuboCardProvider] acknowledgePaymentAndReturnToIdle() rechazado — estado "${state}", se requiere PAYMENT_SUCCESS.`
+      );
+    }
+    session.send('ACKNOWLEDGE');
+    notify({ event: 'payment_acknowledged' });
+  }
+
   return {
     providerType: 'card',
     selectService,
@@ -291,6 +316,7 @@ export function createCuboCardProvider({ mode, machineConfig, apiKey }) {
     canStartCycle: () => canStartCycle(session.getState()),
     requestCycle,
     reportCycleComplete,
+    acknowledgePaymentAndReturnToIdle,
     onResult(handler) {
       resultHandlers.add(handler);
       return () => resultHandlers.delete(handler);

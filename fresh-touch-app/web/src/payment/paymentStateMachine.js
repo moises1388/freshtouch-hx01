@@ -89,6 +89,15 @@ const TRANSITIONS = {
   [STATES.PAYMENT_SUCCESS]: {
     RESET: STATES.IDLE,
     START_CYCLE: STATES.CYCLE_IN_PROGRESS,
+    // Salida separada de START_CYCLE, para cuando el pago se reconoce
+    // pero todavía no hay ESP32 esperando ejecutar nada físico (ver
+    // acknowledgePaymentAndReturnToIdle() en cuboCardProvider.js). No pasa
+    // por CYCLE_IN_PROGRESS — no simula un ciclo que nunca ocurrió — pero
+    // consume la autorización exactamente igual: canStartCycle() es una
+    // función pura del estado, así que en cuanto esto dispara el estado
+    // ya no es PAYMENT_SUCCESS, y ACKNOWLEDGE/START_CYCLE quedan
+    // mutuamente excluyentes para el mismo pago.
+    ACKNOWLEDGE: STATES.IDLE,
   },
   [STATES.CYCLE_IN_PROGRESS]: {
     // CYCLE_COMPLETE se envía una vez que el ciclo físico se confirma

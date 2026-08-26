@@ -92,6 +92,32 @@ test('RESET is available from CYCLE_IN_PROGRESS', () => {
   assert.equal(transition(STATES.CYCLE_IN_PROGRESS, 'RESET'), STATES.IDLE);
 });
 
+test('PAYMENT_SUCCESS -> ACKNOWLEDGE -> IDLE never passes through CYCLE_IN_PROGRESS, and consumes the authorization', () => {
+  const session = createPaymentSession();
+  session.send('SELECT_SERVICE');
+  session.send('SELECT_CARD_PAYMENT');
+  session.send('CONNECT_POS');
+  session.send('POS_CONNECTED');
+  session.send('START_PAYMENT');
+  session.send('CARD_DETECTED');
+  session.send('SUCCESS');
+  assert.equal(session.canStartCycle(), true);
+
+  session.send('ACKNOWLEDGE');
+  assert.equal(session.getState(), STATES.IDLE);
+  assert.equal(session.canStartCycle(), false);
+  // Nunca pasó por CYCLE_IN_PROGRESS — no se simuló un ciclo.
+  assert.notEqual(session.getHistory().includes(STATES.CYCLE_IN_PROGRESS), true);
+});
+
+test('ACKNOWLEDGE and START_CYCLE are mutually exclusive for the same payment', () => {
+  assert.equal(transition(STATES.PAYMENT_SUCCESS, 'ACKNOWLEDGE'), STATES.IDLE);
+  // Una vez en IDLE (ya sea por ACKNOWLEDGE o por START_CYCLE), ninguno de
+  // los dos vuelve a ser válido para ese mismo pago.
+  assert.throws(() => transition(STATES.IDLE, 'ACKNOWLEDGE'));
+  assert.throws(() => transition(STATES.IDLE, 'START_CYCLE'));
+});
+
 test('a terminal error/decline/cancel/timeout state can RESET back to IDLE', () => {
   for (const state of [
     STATES.PAYMENT_DECLINED,

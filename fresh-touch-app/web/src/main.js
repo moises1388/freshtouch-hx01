@@ -593,6 +593,27 @@ function cancelPos() {
   go('s-payment');
 }
 
+// Botón "Volver al inicio" tras PAYMENT_SUCCESS — hallazgo confirmado:
+// antes esto solo llamaba a go('s-idle'), que es navegación puramente
+// visual. cuboPayment se quedaba internamente en PAYMENT_SUCCESS para
+// siempre, así que el segundo cliente nunca podía pasar de
+// selectService()/connectPos() (ambos exigen no estar ya en
+// PAYMENT_SUCCESS). acknowledgePaymentAndReturnToIdle() consume esa
+// autorización y deja el proveedor listo para un cliente nuevo — sin
+// tocar el ESP32 (no se llama, no se importa) y sin desconectar ni
+// reconectar el POS (el método no toca `adapter` en absoluto).
+function posAcknowledgeAndReturn() {
+  try {
+    cuboPayment?.acknowledgePaymentAndReturnToIdle();
+  } catch (err) {
+    // No debería pasar en el flujo normal (el botón solo se muestra en
+    // PAYMENT_SUCCESS) — si pasa, no bloquear al operador por eso: solo
+    // registrar y seguir navegando a IDLE de todos modos.
+    console.warn('[FreshTouch] posAcknowledgeAndReturn()', err.message);
+  }
+  go('s-idle');
+}
+
 function renderPosScreen(snapshot) {
   const statusEl = document.getElementById('pos-status-txt');
   const actionsEl = document.getElementById('pos-actions');
@@ -602,7 +623,7 @@ function renderPosScreen(snapshot) {
   const connectBtn = '<button class="btn-qr-manual" onclick="posConnect()">Conectar POS</button>';
   const cancelBtn = '<button class="btn-back" onclick="posCancel()">Cancelar</button>';
   const retryBtn = '<button class="btn-qr-manual" onclick="posRetry()">Reintentar</button>';
-  const homeBtn = '<button class="btn-back" onclick="go(\'s-idle\')">Volver al inicio</button>';
+  const homeBtn = '<button class="btn-back" onclick="posAcknowledgeAndReturn()">Volver al inicio</button>';
 
   if (snapshot.event === 'init_failed') {
     statusEl.textContent = `No se pudo iniciar el pago con POS: ${snapshot.message}`;
@@ -907,6 +928,7 @@ window.posConnect = posConnect;
 window.posCancel = posCancel;
 window.posRetry = posRetry;
 window.cancelPos = cancelPos;
+window.posAcknowledgeAndReturn = posAcknowledgeAndReturn;
 window.openCode = openCode;
 window.kp = kp;
 window.sessAction = sessAction;

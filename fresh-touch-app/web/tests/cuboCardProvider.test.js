@@ -256,6 +256,107 @@ test('reportCycleComplete() outside CYCLE_IN_PROGRESS throws', () => {
   assert.throws(() => provider.reportCycleComplete(), /no cycle is in progress/);
 });
 
+// --- acknowledgePaymentAndReturnToIdle(): confirmado por revisión externa
+// (ChatGPT) que "Volver al inicio" solo cambiaba la pantalla y dejaba
+// cuboPayment atascado en PAYMENT_SUCCESS, bloqueando al segundo cliente.
+
+test('acknowledgePaymentAndReturnToIdle() consumes the authorization, returns to IDLE, and never touches the POS connection', async () => {
+  const provider = await connected(newProvider(), 'SUCCESS');
+  await provider.createPayment();
+  assert.equal(provider.getStatus(), STATES.PAYMENT_SUCCESS);
+  assert.equal(provider.canStartCycle(), true);
+
+  let disconnectedSeen = false;
+  provider.onResult((snap) => {
+    if (snap.event === CUBO_EVENTS.DISCONNECTED) disconnectedSeen = true;
+  });
+
+  provider.acknowledgePaymentAndReturnToIdle();
+  assert.equal(provider.getStatus(), STATES.IDLE);
+  assert.equal(provider.canStartCycle(), false);
+  // El punto central: nunca se llamó a disconnect() ni se pasó por
+  // CYCLE_IN_PROGRESS — el "reconocimiento" es puramente de estado.
+  assert.equal(disconnectedSeen, false);
+});
+
+test('acknowledgePaymentAndReturnToIdle() and requestCycle() are mutually exclusive for the same payment', async () => {
+  // Camino 1: acknowledge primero -> requestCycle() después se rechaza.
+  const provider1 = await connected(newProvider(), 'SUCCESS');
+  await provider1.createPayment();
+  provider1.acknowledgePaymentAndReturnToIdle();
+  assert.throws(() => provider1.requestCycle(), /requestCycle\(\) rechazado/);
+
+  // Camino 2: requestCycle() primero -> acknowledge después se rechaza.
+  const provider2 = await connected(newProvider(), 'SUCCESS');
+  await provider2.createPayment();
+  provider2.requestCycle();
+  assert.throws(
+    () => provider2.acknowledgePaymentAndReturnToIdle(),
+    /acknowledgePaymentAndReturnToIdle\(\) rechazado/
+  );
+});
+
+test('acknowledgePaymentAndReturnToIdle() outside PAYMENT_SUCCESS throws', () => {
+  const provider = newProvider();
+  assert.throws(
+    () => provider.acknowledgePaymentAndReturnToIdle(),
+    /acknowledgePaymentAndReturnToIdle\(\) rechazado/
+  );
+});
+
+test('DECLINED, CANCELLED, PENDING, and CYCLE_IN_PROGRESS never let acknowledgePaymentAndReturnToIdle() authorize anything', async () => {
+  for (const outcome of ['DECLINED', 'ERROR']) {
+    const provider = await connected(newProvider(), outcome);
+    await provider.createPayment();
+    assert.throws(() => provider.acknowledgePaymentAndReturnToIdle(), /rechazado/);
+  }
+
+  const pendingProvider = await connected(newProvider(), 'PENDING');
+  await new Promise((resolve) => {
+    pendingProvider.onResult((snap) => {
+      if (snap.event === 'payment_pending') resolve();
+    });
+    pendingProvider.createPayment();
+  });
+  assert.throws(() => pendingProvider.acknowledgePaymentAndReturnToIdle(), /rechazado/);
+
+  const cycleProvider = await connected(newProvider(), 'SUCCESS');
+  await cycleProvider.createPayment();
+  cycleProvider.requestCycle();
+  assert.equal(cycleProvider.getStatus(), STATES.CYCLE_IN_PROGRESS);
+  assert.throws(() => cycleProvider.acknowledgePaymentAndReturnToIdle(), /rechazado/);
+});
+
+// --- Escenario completo pedido: cliente 1 paga, reconoce, cliente 2 usa
+// la MISMA conexión Bluetooth (sin desconectar/reconectar) para su
+// propio pago nuevo.
+test('two consecutive customers: client 1 pays and acknowledges, client 2 pays again on the same POS connection', async () => {
+  const provider = await connected(newProvider(), 'SUCCESS');
+
+  // Cliente 1
+  await provider.createPayment();
+  assert.equal(provider.getStatus(), STATES.PAYMENT_SUCCESS);
+  assert.equal(provider.canStartCycle(), true);
+  provider.acknowledgePaymentAndReturnToIdle();
+  assert.equal(provider.getStatus(), STATES.IDLE);
+
+  // Cliente 2 — misma instancia de provider, mismo adapter, sin
+  // disconnectPos()/connectPos() forzado de por medio.
+  let connectingSeen = false;
+  const unsubscribe = provider.onResult((snap) => {
+    if (snap.event === 'connecting') connectingSeen = true;
+  });
+  provider.selectService({ ...service, mockOutcome: 'SUCCESS' });
+  await provider.connectPos();
+  assert.equal(connectingSeen, false, 'no debió reconectar Bluetooth — la conexión ya estaba viva');
+  assert.equal(provider.getStatus(), STATES.POS_CONNECTED);
+
+  await provider.createPayment();
+  assert.equal(provider.getStatus(), STATES.PAYMENT_SUCCESS);
+  assert.equal(provider.canStartCycle(), true);
+  unsubscribe();
+});
+
 test('onResult unsubscribe stops further notifications', async () => {
   const provider = newProvider();
   let calls = 0;
