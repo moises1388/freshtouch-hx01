@@ -55,12 +55,23 @@ const TRANSITIONS = Object.freeze({
   },
   [STATES.READY_TO_START]: {
     OPEN_DOOR: STATES.DOOR_OPEN,
+    // ETAPA 2: si abrir la puerta falla (ESP32 no responde/rechaza), no
+    // hay forma de seguir — sin RESET aquí, un cliente nuevo nunca podría
+    // ni siquiera SELECT_SERVICE (evento no listado para este estado se
+    // ignora en vez de lanzar, ver send() abajo). La recuperación es
+    // siempre manual, desde Admin — nunca automática.
+    RESET: STATES.IDLE,
   },
   [STATES.DOOR_OPEN]: {
     START_CYCLE: STATES.CYCLE_RUNNING,
+    RESET: STATES.IDLE,
   },
   [STATES.CYCLE_RUNNING]: {
     CYCLE_DONE: STATES.CYCLE_FINISHED,
+    // Mismo caso que arriba, para cuando el fallo ocurre asegurando la
+    // puerta antes del ciclo, o durante vapor/secado/UV, o notificando
+    // /cycle-done — ver handleCycleFailure() en main.js.
+    RESET: STATES.IDLE,
   },
   [STATES.CYCLE_FINISHED]: {
     RETURN_TO_IDLE: STATES.IDLE,

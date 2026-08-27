@@ -86,6 +86,58 @@ test('CANCEL desde WAITING_PAYMENT regresa a SERVICE_SELECTED', () => {
   assert.equal(session.getState(), STATES.SERVICE_SELECTED);
 });
 
+// --- ETAPA 2: recuperación manual (RESET) tras un fallo real de ESP32 ---
+
+test('RESET desde READY_TO_START (falla al abrir la puerta) regresa a IDLE', () => {
+  const session = createOperationSession();
+  session.send('SELECT_SERVICE');
+  session.send('REQUEST_PAYMENT');
+  session.send('PAYMENT_APPROVED');
+  session.send('CONFIRM_READY');
+  assert.equal(session.getState(), STATES.READY_TO_START);
+  session.send('RESET');
+  assert.equal(session.getState(), STATES.IDLE);
+});
+
+test('RESET desde DOOR_OPEN regresa a IDLE', () => {
+  const session = createOperationSession();
+  session.send('SELECT_SERVICE');
+  session.send('REQUEST_PAYMENT');
+  session.send('PAYMENT_APPROVED');
+  session.send('CONFIRM_READY');
+  session.send('OPEN_DOOR');
+  assert.equal(session.getState(), STATES.DOOR_OPEN);
+  session.send('RESET');
+  assert.equal(session.getState(), STATES.IDLE);
+});
+
+test('RESET desde CYCLE_RUNNING (falla asegurando la puerta o durante vapor/secado/UV) regresa a IDLE', () => {
+  const session = createOperationSession();
+  session.send('SELECT_SERVICE');
+  session.send('REQUEST_PAYMENT');
+  session.send('PAYMENT_APPROVED');
+  session.send('CONFIRM_READY');
+  session.send('OPEN_DOOR');
+  session.send('START_CYCLE');
+  assert.equal(session.getState(), STATES.CYCLE_RUNNING);
+  session.send('RESET');
+  assert.equal(session.getState(), STATES.IDLE);
+});
+
+test('tras un RESET, un cliente nuevo puede SELECT_SERVICE de nuevo (no queda atascado)', () => {
+  const session = createOperationSession();
+  session.send('SELECT_SERVICE');
+  session.send('REQUEST_PAYMENT');
+  session.send('PAYMENT_APPROVED');
+  session.send('CONFIRM_READY');
+  session.send('OPEN_DOOR');
+  session.send('START_CYCLE');
+  session.send('RESET');
+  const result = session.send('SELECT_SERVICE');
+  assert.equal(result, true);
+  assert.equal(session.getState(), STATES.SERVICE_SELECTED);
+});
+
 test('onTransition: la función de desuscripción funciona', () => {
   const session = createOperationSession();
   let calls = 0;

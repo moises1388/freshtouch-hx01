@@ -139,16 +139,21 @@ function currentPrice() {
 // flujo sin esperar minutos reales) — Fase 3 (ESP32 real) las hará
 // depender de la confirmación real del hardware, no de un temporizador
 // local fijo.
+// ETAPA 2: la tercera fase (antes "aroma", comp: null — no accionaba
+// ningún relé) ahora usa 'luzuv' (GPIO18, ya probado físicamente en
+// ETAPA 1). Duración sin cambios (dur: 2 en ambos planes) — no se inventa
+// una nueva, queda documentado que puede no ser la ideal para UV, es
+// decisión pendiente para más adelante.
 const CYCLES = {
   basic: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 3, comp: 'vapor' },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 2, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🌸', lbl: 'p3b', dur: 2, comp: null },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 2, comp: 'luzuv' },
   ],
   premium: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 4, comp: 'vapor' },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 3, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🌸', lbl: 'p3p', dur: 2, comp: null },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 2, comp: 'luzuv' },
   ],
 };
 
@@ -279,6 +284,11 @@ async function renderAdminBody() {
 
   const canViewIdentity = role === 'sa' || role === 'ow';
   const canProvision = role === 'sa';
+  // ETAPA 2: recuperación manual de un ciclo atascado tras un fallo real
+  // de ESP32 (ver handleCycleFailure() en main.js) — exclusiva de Admin,
+  // nunca visible ni accesible desde ninguna pantalla de cliente
+  // (condiciones #8/#9 de la autorización).
+  const canResetCycle = role === 'sa' || role === 'tc';
 
   let html = '';
 
@@ -290,6 +300,12 @@ async function renderAdminBody() {
   }
 
   html += `<div class="admin-panel-section"><h3>Diagnóstico</h3>${diagRows}</div>`;
+
+  if (canResetCycle) {
+    html += `<div class="admin-panel-section"><h3>Recuperación</h3>
+      <button onclick="window.__ftaResetStuckCycle()">Reiniciar ciclo atascado</button>
+    </div>`;
+  }
 
   if (canProvision) {
     const hasSecret = await nativeBridge.hasSecret('cuboApiKey');
@@ -800,15 +816,54 @@ function updateSessUI() {
   }
 }
 
-function setDoor(open) {
+// ETAPA 2 — setDoor() envía el comando del relé "puerta" al ESP32.
+// LIMITACIÓN DOCUMENTADA (condición #10 de la autorización): un 200 OK
+// del ESP32 solo confirma que el comando fue RECIBIDO — este firmware no
+// tiene ningún sensor de puerta, así que nada aquí puede confirmar que el
+// electroimán físicamente abrió o retuvo la puerta.
+//
+// POLARIDAD SIN VERIFICAR (condición #5): open=true sigue usando la
+// misma convención heredada desde Fase 1 ("abrir"), open=false para
+// "cerrar/asegurar" (nuevo en ETAPA 2). No se invierte ni se asume nada
+// distinto — no se pudo hacer la prueba física porque la puerta todavía
+// no está conectada. Antes de operar con clientes reales, hay que
+// confirmar físicamente cuál sentido (ON/OFF) corresponde a abrir vs.
+// retener, tal como se pidió.
+async function setDoor(open) {
+  await esp32.setRelay('puerta', open);
   STATE.doorOpen = open;
-  esp32.setRelay('puerta', open);
   toast(open ? t().tk.door_opened : t().tk.door_closed, open ? 'in' : 'ok');
 }
 
-function sessAction() {
+// Fallo real de ESP32 en cualquier punto del ciclo físico (puerta, vapor,
+// secado, UV, o notifyCycleDone) — detiene todo de inmediato y deja un
+// estado de error visible, SIN ninguna acción disponible para el cliente
+// (nunca un botón de reintentar/cancelar/volver desde aquí). Se navega a
+// s-cycle sin importar en qué pantalla estaba el fallo (ej. abriendo la
+// puerta, todavía en s-session) para tener un único lugar consistente
+// donde mostrar el error. La recuperación es SIEMPRE manual desde Admin
+// (ver adminResetStuckCycle()) — nunca automática (condiciones #8/#9).
+function handleCycleFailure(err) {
+  console.error('[FreshTouch] Ciclo interrumpido — fallo real de ESP32:', err);
+  clearInterval(cycTimer);
+  clearInterval(extraTimer);
+  clearInterval(doneTimer);
+  go('s-cycle');
+  const l = t();
+  document.getElementById('cyc-ico').textContent = '⚠️';
+  document.getElementById('cyc-ph-nm').textContent = l.cycle_error_nm;
+  document.getElementById('cyc-ph-lbl').textContent = l.cycle_error_lbl;
+  toast(l.cycle_error_nm, 'er');
+}
+
+async function sessAction() {
   if (STATE.sessStep === 1) {
-    setDoor(true);
+    try {
+      await setDoor(true);
+    } catch (err) {
+      handleCycleFailure(err);
+      return;
+    }
     operation.send('OPEN_DOOR');
     STATE.sessStep = 2;
     updateSessUI();
@@ -818,7 +873,7 @@ function sessAction() {
 }
 
 // --- Ciclo ---
-function startCycle() {
+async function startCycle() {
   operation.send('START_CYCLE');
   // Fail-closed (Fase 3): si el intento de transición de arriba no fue
   // válido — p. ej. algo llamó a startCycle() sin haber pasado por un
@@ -838,10 +893,19 @@ function startCycle() {
   cyPhIdx = 0;
   document.getElementById('cyc-mid').textContent = machineConfig.machineId;
   go('s-cycle');
+  // ETAPA 2: asegurar/retener la puerta ANTES de activar cualquier
+  // actuador de ciclo — si esto falla, vapor/secado/UV NUNCA arrancan
+  // (condición #10, la regla de seguridad más importante de esta etapa).
+  try {
+    await setDoor(false);
+  } catch (err) {
+    handleCycleFailure(err);
+    return;
+  }
   runPhase();
 }
 
-function runPhase() {
+async function runPhase() {
   const phases = CYCLES[STATE.plan];
   if (cyPhIdx >= phases.length) { cycleDone(); return; }
   cyCurPh = phases[cyPhIdx];
@@ -854,15 +918,29 @@ function runPhase() {
   ['cp0', 'cp1', 'cp2'].forEach((id, i) => {
     document.getElementById(id).className = `cph${i < cyPhIdx ? ' done' : i === cyCurPh.ph ? ' cur' : i === cyPhIdx ? ' cur' : ''}`;
   });
-  if (cyCurPh.comp) esp32.setRelay(cyCurPh.comp, true);
+  if (cyCurPh.comp) {
+    try {
+      await esp32.setRelay(cyCurPh.comp, true);
+    } catch (err) {
+      handleCycleFailure(err);
+      return;
+    }
+  }
   updateCycTimer();
   clearInterval(cycTimer);
-  cycTimer = setInterval(() => {
+  cycTimer = setInterval(async () => {
     cySecs--;
     updateCycTimer();
     if (cySecs <= 0) {
       clearInterval(cycTimer);
-      if (cyCurPh.comp) esp32.setRelay(cyCurPh.comp, false);
+      if (cyCurPh.comp) {
+        try {
+          await esp32.setRelay(cyCurPh.comp, false);
+        } catch (err) {
+          handleCycleFailure(err);
+          return;
+        }
+      }
       cyPhIdx++;
       setTimeout(runPhase, 200);
     }
@@ -875,8 +953,16 @@ function updateCycTimer() {
   document.getElementById('cyc-prog').style.width = `${((cyDur - cySecs) / cyDur) * 100}%`;
 }
 
-function cycleDone() {
-  esp32.notifyCycleDone(STATE.plan);
+async function cycleDone() {
+  // ETAPA 2: solo si notifyCycleDone() tiene éxito se marca el ciclo como
+  // terminado (operationState avanza, se muestra s-done). Si falla, NO se
+  // simula un final exitoso — se detiene y requiere recuperación manual.
+  try {
+    await esp32.notifyCycleDone(STATE.plan);
+  } catch (err) {
+    handleCycleFailure(err);
+    return;
+  }
   operation.send('CYCLE_DONE');
   go('s-done');
   document.getElementById('btn-extra').style.display = 'block';
@@ -884,18 +970,32 @@ function cycleDone() {
   startDoneTimer();
 }
 
-function startExtraDry() {
+async function startExtraDry() {
   document.getElementById('btn-extra').style.display = 'none';
   document.getElementById('extra-run').style.display = 'block';
-  esp32.setRelay('secado', true);
+  try {
+    await esp32.setRelay('secado', true);
+  } catch (err) {
+    console.error('[FreshTouch] startExtraDry() falló al encender secado:', err);
+    toast('No se pudo activar el secado extra.', 'er');
+    document.getElementById('extra-run').style.display = 'none';
+    document.getElementById('btn-extra').style.display = 'block';
+    return;
+  }
   let s = 5; // acortado para Fase 1 — HX01 real usa 60s
   clearInterval(extraTimer);
-  extraTimer = setInterval(() => {
+  extraTimer = setInterval(async () => {
     s--;
     document.getElementById('extra-timer').textContent = `0:0${Math.max(s, 0)}`;
     if (s <= 0) {
       clearInterval(extraTimer);
-      esp32.setRelay('secado', false);
+      try {
+        await esp32.setRelay('secado', false);
+      } catch (err) {
+        console.error('[FreshTouch] startExtraDry() falló al apagar secado:', err);
+        toast('Error al apagar el secado extra — revisa manualmente.', 'er');
+        return;
+      }
       document.getElementById('extra-run').textContent = '✅ Listo';
     }
   }, 1000);
@@ -934,6 +1034,16 @@ function submitInvoice() {
 
 function closeEmg() {
   document.getElementById('emg-modal').classList.remove('on');
+}
+
+// ETAPA 2 — única forma de destrabar operationState tras un fallo real de
+// ESP32 (ver handleCycleFailure()). Exclusiva del botón de Admin (rol
+// sa/tc, ver renderAdminBody()) — nunca se llama automáticamente desde
+// ningún camino de error del flujo de cliente.
+function adminResetStuckCycle() {
+  operation.send('RESET');
+  go('s-idle');
+  toast('Ciclo reiniciado desde Admin', 'in');
 }
 
 // --- Arranque ---
@@ -984,3 +1094,4 @@ window.__ftaSimSetSecret = simSetSecret;
 window.__ftaSimClearSecret = simClearSecret;
 window.__ftaSetCuboApiKey = setCuboApiKey;
 window.__ftaClearCuboApiKey = clearCuboApiKey;
+window.__ftaResetStuckCycle = adminResetStuckCycle;
