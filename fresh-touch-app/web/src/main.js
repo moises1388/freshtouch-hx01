@@ -36,8 +36,26 @@ import { t, getLang, setLang, applyLang } from './ui/i18n.js';
 // se usa esa configuración guardada; si no, se sigue arrancando con el
 // mock de Fase 1 — nunca se auto-guarda el mock, así "isProvisioned()"
 // solo es true después de un Guardar explícito desde el panel de admin.
+// Override temporal de esp32Mode/esp32Address vía query string —
+// ?esp32Mode=real&esp32Address=172.20.10.10 — para poder probar contra el
+// ESP32 real desde cualquier navegador (incluida una tablet) sin editar
+// código ni tocar lo que ya esté provisionado. Nunca se persiste (no
+// llama a configStore.save()): vive solo en memoria mientras esta pestaña
+// tenga esos parámetros en la URL. Cualquier esp32Mode que no sea
+// exactamente "mock" o "real" se ignora — fail-closed, no se acepta un
+// modo inventado ni a medias.
+function applyUrlConfigOverrides(config) {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('esp32Mode');
+  const address = params.get('esp32Address');
+  const overrides = {};
+  if (mode === 'mock' || mode === 'real') overrides.esp32Mode = mode;
+  if (address) overrides.esp32Address = address;
+  return Object.keys(overrides).length > 0 ? { ...config, ...overrides } : config;
+}
+
 const configStore = createMachineConfigStore();
-let machineConfig = configStore.load() || loadMockMachineConfig();
+let machineConfig = applyUrlConfigOverrides(configStore.load() || loadMockMachineConfig());
 assertValidMachineConfig(machineConfig);
 
 // Selección de controlador ESP32 — Etapa 1 (smoke test de transporte
@@ -245,7 +263,13 @@ async function renderAdminBody() {
   const badgeEl = document.getElementById('role-bdg');
   if (badgeEl) {
     badgeEl.className = `role-bdg ${ROLE_BADGE_CLASS[role] || 'r-sa'}`;
-    badgeEl.innerHTML = `${l[ROLE_LABEL_KEY[role]] || ''} <span class="mock-badge">MOCK</span>`;
+    // Antes decía siempre "MOCK" a secas (arrastrado de Fase 1, cuando
+    // todo era mock siempre) — ya no es cierto desde que existe el modo
+    // real de ESP32 (Etapa 1). Refleja machineConfig.esp32Mode de verdad,
+    // para poder confirmar desde la propia tablet, sin DevTools, si se
+    // está hablando con el ESP32 real o con el mock.
+    const esp32ModeLabel = machineConfig.esp32Mode === 'real' ? 'ESP32: REAL' : 'ESP32: MOCK';
+    badgeEl.innerHTML = `${l[ROLE_LABEL_KEY[role]] || ''} <span class="mock-badge">${esp32ModeLabel}</span>`;
   }
 
   const diagRows = Object.entries(diag)
@@ -922,7 +946,9 @@ applyLang(machineConfig.prices);
 // seguir viendo pantallas / que el admin entre a diagnosticar aunque el
 // ESP32 no responda; lo que sí queda fail-closed es el inicio del ciclo
 // en sí (ver startCycle()), no la app entera.
-esp32.connect().catch((err) => {
+esp32.connect().then((result) => {
+  console.log(`[ESP32] connect() (modo "${machineConfig.esp32Mode || 'mock'}", esp32Address="${machineConfig.esp32Address}") exitoso:`, result);
+}).catch((err) => {
   console.error(`[ESP32] connect() (modo "${machineConfig.esp32Mode || 'mock'}", esp32Address="${machineConfig.esp32Address}") falló al arrancar:`, err);
 });
 
