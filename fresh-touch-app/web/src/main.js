@@ -861,7 +861,10 @@ function handleCycleFailure(err) {
   const l = t();
   document.getElementById('cyc-ico').textContent = '⚠️';
   document.getElementById('cyc-ph-nm').textContent = l.cycle_error_nm;
-  document.getElementById('cyc-ph-lbl').textContent = l.cycle_error_lbl;
+  // El mensaje real del error se muestra en pantalla (no solo en consola)
+  // — diagnosticar desde una tablet sin DevTools a la mano era el cuello
+  // de botella real hasta ahora.
+  document.getElementById('cyc-ph-lbl').textContent = `${l.cycle_error_lbl}: ${err?.message || err}`;
   toast(l.cycle_error_nm, 'er');
 }
 
