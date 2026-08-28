@@ -145,19 +145,24 @@ function currentPrice() {
 // también tiene un precalentamiento de vapor de 15s (CFG.durPreheat)
 // ANTES de esta secuencia — no está incluido aquí, es un paso aparte de
 // la estructura actual de CYCLES, pendiente si se quiere replicarlo.
-// La tercera fase (antes "aroma", comp: null) usa 'luzuv' (GPIO18, ya
-// probado físicamente en ETAPA 1) con la misma duración que HX01 real
-// usaba para esa fase (3s).
+//
+// UV (GPIO18) ya NO es una fase con su propio relé: por instrucción
+// explícita, 'luzuv' se enciende una sola vez al principio del ciclo
+// (justo antes de que arranque vapor) y se apaga una sola vez al final
+// (justo después de que termine la última fase) — ver startCycle() y
+// cycleDone(). La tercera fase (antes "aroma") vuelve a comp: null: sigue
+// siendo un tramo visible con su propio nombre/duración, pero ya no
+// dispara su propio relé porque UV ya está encendida desde el principio.
 const CYCLES = {
   basic: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 45, comp: 'vapor' },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 120, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: 'luzuv' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 75, comp: 'vapor' },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 240, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: 'luzuv' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
 };
 
@@ -906,6 +911,17 @@ async function startCycle() {
     handleCycleFailure(err);
     return;
   }
+  // UV (GPIO18) encendida de fondo desde antes de que arranque vapor
+  // hasta después de que termine la última fase — instrucción explícita,
+  // ya no es una fase individual con su propio encendido/apagado (ver
+  // apagado correspondiente en cycleDone()). Si falla, ninguna fase de
+  // vapor/secado arranca — mismo criterio fail-closed que la puerta.
+  try {
+    await esp32.setRelay('luzuv', true);
+  } catch (err) {
+    handleCycleFailure(err);
+    return;
+  }
   runPhase();
 }
 
@@ -958,6 +974,16 @@ function updateCycTimer() {
 }
 
 async function cycleDone() {
+  // Apagar la UV de fondo (ver encendido en startCycle()) antes de
+  // notificar el fin del ciclo. Si falla, tampoco se reporta el ciclo
+  // como terminado — no queremos marcar éxito con la UV posiblemente
+  // encendida sin control.
+  try {
+    await esp32.setRelay('luzuv', false);
+  } catch (err) {
+    handleCycleFailure(err);
+    return;
+  }
   // ETAPA 2: solo si notifyCycleDone() tiene éxito se marca el ciclo como
   // terminado (operationState avanza, se muestra s-done). Si falla, NO se
   // simula un final exitoso — se detiene y requiere recuperación manual.
