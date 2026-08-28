@@ -139,21 +139,25 @@ function currentPrice() {
 // flujo sin esperar minutos reales) — Fase 3 (ESP32 real) las hará
 // depender de la confirmación real del hardware, no de un temporizador
 // local fijo.
-// ETAPA 2: la tercera fase (antes "aroma", comp: null — no accionaba
-// ningún relé) ahora usa 'luzuv' (GPIO18, ya probado físicamente en
-// ETAPA 1). Duración sin cambios (dur: 2 en ambos planes) — no se inventa
-// una nueva, queda documentado que puede no ser la ideal para UV, es
-// decisión pendiente para más adelante.
+// Duraciones — tomadas literalmente de config.js/app.js de HX01 real
+// (rama main, CFG.durVapBasic/durSecBasic/durVapPremium/durSecPremium, y
+// el dur:3 hardcodeado de la tercera fase), no inventadas. HX01 real
+// también tiene un precalentamiento de vapor de 15s (CFG.durPreheat)
+// ANTES de esta secuencia — no está incluido aquí, es un paso aparte de
+// la estructura actual de CYCLES, pendiente si se quiere replicarlo.
+// La tercera fase (antes "aroma", comp: null) usa 'luzuv' (GPIO18, ya
+// probado físicamente en ETAPA 1) con la misma duración que HX01 real
+// usaba para esa fase (3s).
 const CYCLES = {
   basic: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 3, comp: 'vapor' },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 2, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 2, comp: 'luzuv' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 45, comp: 'vapor' },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 120, comp: 'secado' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: 'luzuv' },
   ],
   premium: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 4, comp: 'vapor' },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 3, comp: 'secado' },
-    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 2, comp: 'luzuv' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 75, comp: 'vapor' },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 240, comp: 'secado' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: 'luzuv' },
   ],
 };
 
