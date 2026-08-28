@@ -68,9 +68,9 @@ const TRANSITIONS = Object.freeze({
   },
   [STATES.CYCLE_RUNNING]: {
     CYCLE_DONE: STATES.CYCLE_FINISHED,
-    // Mismo caso que arriba, para cuando el fallo ocurre asegurando la
-    // puerta antes del ciclo, o durante vapor/secado/UV, o notificando
-    // /cycle-done — ver handleCycleFailure() en main.js.
+    // Mismo caso que arriba — reset manual disponible como herramienta
+    // general de Admin (adminResetStuckCycle() en main.js), por si
+    // operationState queda en un estado inesperado.
     RESET: STATES.IDLE,
   },
   [STATES.CYCLE_FINISHED]: {

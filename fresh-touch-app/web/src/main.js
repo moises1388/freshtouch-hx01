@@ -293,10 +293,12 @@ async function renderAdminBody() {
 
   const canViewIdentity = role === 'sa' || role === 'ow';
   const canProvision = role === 'sa';
-  // ETAPA 2: recuperación manual de un ciclo atascado tras un fallo real
-  // de ESP32 (ver handleCycleFailure() en main.js) — exclusiva de Admin,
-  // nunca visible ni accesible desde ninguna pantalla de cliente
-  // (condiciones #8/#9 de la autorización).
+  // Reset manual de sesión/operationState — ya no hace falta para
+  // "destrabar" un fallo de ESP32 (el ciclo ya no se congela con eso, ver
+  // logCycleWarning() en main.js), pero se deja disponible como
+  // herramienta general de Admin por si operationState queda en un
+  // estado inesperado por otra razón. Exclusiva de Admin, nunca visible
+  // ni accesible desde pantalla de cliente.
   const canResetCycle = role === 'sa' || role === 'tc';
 
   let html = '';
@@ -844,28 +846,16 @@ async function setDoor(open) {
   toast(open ? t().tk.door_opened : t().tk.door_closed, open ? 'in' : 'ok');
 }
 
-// Fallo real de ESP32 en cualquier punto del ciclo físico (puerta, vapor,
-// secado, UV, o notifyCycleDone) — detiene todo de inmediato y deja un
-// estado de error visible, SIN ninguna acción disponible para el cliente
-// (nunca un botón de reintentar/cancelar/volver desde aquí). Se navega a
-// s-cycle sin importar en qué pantalla estaba el fallo (ej. abriendo la
-// puerta, todavía en s-session) para tener un único lugar consistente
-// donde mostrar el error. La recuperación es SIEMPRE manual desde Admin
-// (ver adminResetStuckCycle()) — nunca automática (condiciones #8/#9).
-function handleCycleFailure(err) {
-  console.error('[FreshTouch] Ciclo interrumpido — fallo real de ESP32:', err);
-  clearInterval(cycTimer);
-  clearInterval(extraTimer);
-  clearInterval(doneTimer);
-  go('s-cycle');
-  const l = t();
-  document.getElementById('cyc-ico').textContent = '⚠️';
-  document.getElementById('cyc-ph-nm').textContent = l.cycle_error_nm;
-  // El mensaje real del error se muestra en pantalla (no solo en consola)
-  // — diagnosticar desde una tablet sin DevTools a la mano era el cuello
-  // de botella real hasta ahora.
-  document.getElementById('cyc-ph-lbl').textContent = `${l.cycle_error_lbl}: ${err?.message || err}`;
-  toast(l.cycle_error_nm, 'er');
+// Un fallo real de ESP32 durante el ciclo ya NO detiene ni bloquea nada —
+// igual que en HX01 real (app.js, cycleDone(): notifyCycleDone() ahí es
+// disparar-y-olvidar, sin manejo de error de ningún tipo). Se sigue
+// registrando en consola + un toast breve, para poder diagnosticar, pero
+// el flujo del cliente siempre continúa hasta "Retira tu casco" —
+// instrucción explícita, revirtiendo el bloqueo que tenía esta etapa
+// antes.
+function logCycleWarning(context, err) {
+  console.error(`[FreshTouch] ${context} — el ESP32 no respondió bien (no bloqueante):`, err);
+  toast(`Aviso: ${context} no respondió.`, 'er');
 }
 
 async function sessAction() {
@@ -873,8 +863,7 @@ async function sessAction() {
     try {
       await setDoor(true);
     } catch (err) {
-      handleCycleFailure(err);
-      return;
+      logCycleWarning('Abrir puerta', err);
     }
     operation.send('OPEN_DOOR');
     STATE.sessStep = 2;
@@ -905,25 +894,21 @@ async function startCycle() {
   cyPhIdx = 0;
   document.getElementById('cyc-mid').textContent = machineConfig.machineId;
   go('s-cycle');
-  // ETAPA 2: asegurar/retener la puerta ANTES de activar cualquier
-  // actuador de ciclo — si esto falla, vapor/secado/UV NUNCA arrancan
-  // (condición #10, la regla de seguridad más importante de esta etapa).
+  // Asegurar/retener la puerta antes de vapor/secado — igual que HX01
+  // real, un fallo aquí ya no detiene el ciclo, solo se registra.
   try {
     await setDoor(false);
   } catch (err) {
-    handleCycleFailure(err);
-    return;
+    logCycleWarning('Asegurar puerta', err);
   }
   // UV (GPIO18) encendida de fondo desde antes de que arranque vapor
-  // hasta después de que termine la última fase — instrucción explícita,
-  // ya no es una fase individual con su propio encendido/apagado (ver
-  // apagado correspondiente en cycleDone()). Si falla, ninguna fase de
-  // vapor/secado arranca — mismo criterio fail-closed que la puerta.
+  // hasta después de que termine la última fase (ver apagado en
+  // cycleDone()) — ya no es una fase individual con su propio
+  // encendido/apagado.
   try {
     await esp32.setRelay('luzuv', true);
   } catch (err) {
-    handleCycleFailure(err);
-    return;
+    logCycleWarning('Encender UV', err);
   }
   runPhase();
 }
@@ -945,8 +930,7 @@ async function runPhase() {
     try {
       await esp32.setRelay(cyCurPh.comp, true);
     } catch (err) {
-      handleCycleFailure(err);
-      return;
+      logCycleWarning(`${cyCurPh.comp} ON`, err);
     }
   }
   updateCycTimer();
@@ -960,8 +944,7 @@ async function runPhase() {
         try {
           await esp32.setRelay(cyCurPh.comp, false);
         } catch (err) {
-          handleCycleFailure(err);
-          return;
+          logCycleWarning(`${cyCurPh.comp} OFF`, err);
         }
       }
       cyPhIdx++;
@@ -976,31 +959,34 @@ function updateCycTimer() {
   document.getElementById('cyc-prog').style.width = `${((cyDur - cySecs) / cyDur) * 100}%`;
 }
 
+// Replica el cycleDone() real de HX01 (app.js, rama main): apaga UV y
+// notifica el fin del ciclo disparar-y-olvidar (sin bloquear si fallan,
+// solo se registra), y abre la puerta ~1.2s después de llegar a
+// "Retira tu casco" para que el cliente pueda sacar su casco — igual
+// patrón y mismo retraso que el setTimeout(...,1200) real de HX01.
 async function cycleDone() {
-  // Apagar la UV de fondo (ver encendido en startCycle()) antes de
-  // notificar el fin del ciclo. Si falla, tampoco se reporta el ciclo
-  // como terminado — no queremos marcar éxito con la UV posiblemente
-  // encendida sin control.
   try {
     await esp32.setRelay('luzuv', false);
   } catch (err) {
-    handleCycleFailure(err);
-    return;
+    logCycleWarning('Apagar UV', err);
   }
-  // ETAPA 2: solo si notifyCycleDone() tiene éxito se marca el ciclo como
-  // terminado (operationState avanza, se muestra s-done). Si falla, NO se
-  // simula un final exitoso — se detiene y requiere recuperación manual.
   try {
     await esp32.notifyCycleDone(STATE.plan);
   } catch (err) {
-    handleCycleFailure(err);
-    return;
+    logCycleWarning('notifyCycleDone', err);
   }
   operation.send('CYCLE_DONE');
   go('s-done');
   document.getElementById('btn-extra').style.display = 'block';
   document.getElementById('extra-run').style.display = 'none';
   startDoneTimer();
+  setTimeout(async () => {
+    try {
+      await setDoor(true);
+    } catch (err) {
+      logCycleWarning('Abrir puerta al finalizar', err);
+    }
+  }, 1200);
 }
 
 async function startExtraDry() {
@@ -1069,9 +1055,8 @@ function closeEmg() {
   document.getElementById('emg-modal').classList.remove('on');
 }
 
-// ETAPA 2 — única forma de destrabar operationState tras un fallo real de
-// ESP32 (ver handleCycleFailure()). Exclusiva del botón de Admin (rol
-// sa/tc, ver renderAdminBody()) — nunca se llama automáticamente desde
+// Reset manual de operationState — herramienta general de Admin (rol
+// sa/tc, ver renderAdminBody()). Nunca se llama automáticamente desde
 // ningún camino de error del flujo de cliente.
 function adminResetStuckCycle() {
   operation.send('RESET');
