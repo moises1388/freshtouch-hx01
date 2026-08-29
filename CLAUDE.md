@@ -1,0 +1,144 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+FreshTouch HX01 — the touchscreen kiosk UI for a self-service motorcycle-helmet
+cleaning machine (steam + dry + scent + UV). It runs on an in-cabin tablet/browser
+and talks over the local WiFi to an ESP32 that drives the physical relays (steam,
+dryer, UV light, door lock). Payment, sales logging, and daily cash-code
+broadcast are handled by Make.com scenarios via webhooks (Google Sheets +
+Telegram on the backend). Text in the app is Spanish-first for the Guatemala
+market (INFILE e-invoicing, Quetzales), with an English toggle.
+
+This is a static, no-build, vanilla JS/HTML/CSS app — there is no package.json,
+bundler, or test suite. It's meant to be opened directly in a kiosk browser
+(e.g. Chromium in fullscreen kiosk mode) pointed at `index.html`.
+
+## Running / developing
+
+There is no build step. To work on it locally, just serve the directory statically, e.g.:
+
+```
+python3 -m http.server 8080
+```
+
+then open `index.html`. There are no lint or test commands configured — verify
+changes by exercising the UI in a browser (the relay calls to the ESP32 and the
+Make.com webhooks will fail silently/gracefully off-network; see below).
+
+## File map
+
+- `index.html` — the actual markup for every screen (idle, plan selection,
+  payment, QR, code entry, session/door, cleaning cycle, done, admin, PIN,
+  emergency, suspended overlay). All screens live in this one file as sibling
+  `<div class="scr">` blocks toggled by `go(id)`.
+- `styles.css` — all styling for `index.html`.
+- `config.js` — the **only file meant to be edited per physical machine**. Defines
+  the `CFG` object (machine ID, ESP32 IP, prices, cycle durations, PINs, Make.com
+  webhook URLs/secret, business name, INFILE mode). See the banner comment at
+  the top of the file.
+- `app.js` — all application logic (state machine, ESP32 relay calls, Make.com
+  webhook calls, translations, admin panel, localStorage persistence). One flat
+  file, no modules/bundler.
+- `img/` — UI images (banner, helmet renders, logo) referenced by `index.html`.
+- `freshtouch_app.html` — a **legacy, self-contained single-file prototype**
+  (inline CSS/JS, base64-embedded images) from an abandoned NFC-payment
+  experiment. It is not wired into `index.html`/`app.js` and is not part of the
+  active app — don't edit it expecting it to affect the deployed kiosk UI unless
+  the task specifically concerns reviving/porting that experiment.
+
+## Architecture
+
+### Screen flow / state machine
+
+`app.js` implements a single-page state machine over the `<div class="scr">`
+elements in `index.html`. `go(id)` hides all screens and shows the one with
+that id, clearing any running timers when returning to `s-idle`. The flow is:
+
+```
+s-idle → s-plan → s-payment → (s-qr | s-code) → s-session → s-cycle → s-done
+```
+
+Admin access (`s-admin`) is reached from `s-idle` via a hidden tap trigger
+(`admTap()`, 5 taps) → PIN overlay (`s-pin`) → `renderAdmin(role)`.
+
+### Config vs. state vs. persisted data
+
+- `CFG` (`config.js`) — factory/per-machine config, loaded fresh from the file
+  on every page load.
+- `CFG_OVERRIDE_KEYS` (`app.js`) — a *whitelist* of `CFG` fields the admin panel
+  is allowed to change at runtime; overrides are persisted to
+  `localStorage['hx_cfg']` and merged over `CFG` on load via
+  `loadCfgOverrides()`/`saveCfgOverrides()`. Webhook URLs and the webhook secret
+  are deliberately **excluded** from this whitelist so they can't be broken from
+  the tablet UI — only edit those in `config.js`.
+- `STATE` — in-memory, non-persisted UI/session state (current plan, PIN entry
+  buffer, active role, running timer handles, QR transaction info).
+- `DB` — persisted operational data in `localStorage['hx_db']`: generated codes
+  (cash/promo), activity log, cumulative/daily stats, saved invoice contacts.
+  Loaded via `DB.load()` at startup; daily counters reset when the stored day
+  no longer matches today.
+
+### Roles & PINs
+
+Four roles gated by PIN length + value against `CFG.pinSA/pinOwner/pinTech/pinTenant`
+(6/5/4/4 digits respectively — tech and tenant PINs must differ despite equal
+length): `sa` (Super Admin/HYDROX), `ow` (machine owner), `tc` (technician),
+`tn` (tenant). `renderAdmin(role)` conditionally shows admin panel sections
+based on role (see the `role==='sa'||role==='ow'` etc. checks around
+`app.js:810+`).
+
+### Payment paths
+
+Three ways to pay, chosen from `s-payment`:
+1. **QR (Cubo)** — `openQR()` POSTs to `CFG.makeCuboWebhook` to get a payment
+   link, renders it as a QR (via `api.qrserver.com`), then `startQRPoll()` polls
+   `CFG.makePollWebhook` (after an initial `qrPollDelaySec` grace period, every
+   `qrPollIntervalSec`) until `confirmado` comes back true, or the customer taps
+   the manual-confirm button that appears after that same delay. `qrTimeoutSec`
+   bounds the whole screen.
+2. **Cash code** — a rotating single code (valid for either plan) generated by
+   `rotateCashCode()`, shown to cashiers via Telegram (`notificarCodigoCaja` →
+   `CFG.makeVentasWebhook`), and consumed via `DB.validate()`/`DB.useCode()`.
+   A new code is minted daily at `CFG.horaCodigoDiario` (`checkDailyCashCode()`)
+   and immediately whenever the current one is used.
+3. **Promo code** — same code infrastructure as cash codes (`DB.genCode('promo', plan)`),
+   entered manually, single-use.
+
+Every completed sale calls `registrarVenta()` → `CFG.makeVentasWebhook` (fire-and-forget;
+failures are logged to console but never block the flow) which the Make.com
+scenario turns into a Google Sheets row + Telegram notification.
+
+### Cleaning cycle
+
+`CYCLES` (`app.js:646`) defines phase durations per plan (basic/premium) for
+vapor → dry → scent, built from the `dur*` values in `CFG`. `startCycle()`/`runPhase()`
+step through phases, calling `relay(component, on)` for each of `CFG.relayVapor`,
+`relaySec`, `relayUV`, `relayPuerta` — these must match the relay names the
+ESP32 firmware expects. `relay()` hits `http://<CFG.esp32Ip>/relay?comp=...&state=0|1`
+with a 3s timeout and degrades to a "(demo)" log entry on failure, so the UI
+stays usable off-network for demos.
+
+### i18n
+
+`T` (`app.js:5`) holds `es`/`en` string tables; `t()` returns the active
+language's table, `applyLang()` writes strings into the DOM by element id
+(`ti-*`, `tp-*`, etc. prefixes matching screen abbreviations), `toggleLang()`
+flips `LANG` and re-renders (including the admin panel if open).
+
+## Conventions
+
+- Spanish is the primary/default language and the language of code comments;
+  keep new comments and default-language UI strings in Spanish, add English
+  strings to `T.en` for parity.
+- `app.js` and `index.html` use terse, unspaced/minified-looking JS (no
+  build step turns readable code into this — it's written this way directly).
+  Match the existing density rather than reformatting unrelated code.
+- Never move webhook URLs, `webhookSecret`, or PINs out of `config.js` into
+  `app.js` or into `CFG_OVERRIDE_KEYS` — that whitelist boundary is intentional
+  (see the comment at `app.js:236-238`).
+- Per-machine deployment is meant to require editing only `config.js`
+  (see the banner comment at the top of that file) — avoid hardcoding
+  machine-specific values (IPs, prices, machine IDs) in `app.js` or `index.html`.
