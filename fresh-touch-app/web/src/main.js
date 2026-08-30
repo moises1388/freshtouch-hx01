@@ -134,33 +134,36 @@ function currentPrice() {
   return STATE.plan === 'basic' ? machineConfig.prices.basic : machineConfig.prices.premium;
 }
 
-// Fases del ciclo — misma estructura de 3 fases que HX01 (Vapor/Secado/
-// Aroma), duraciones acortadas a propósito para Fase 1 (demostrar el
-// flujo sin esperar minutos reales) — Fase 3 (ESP32 real) las hará
-// depender de la confirmación real del hardware, no de un temporizador
-// local fijo.
-// Duraciones — tomadas literalmente de config.js/app.js de HX01 real
-// (rama main, CFG.durVapBasic/durSecBasic/durVapPremium/durSecPremium, y
-// el dur:3 hardcodeado de la tercera fase), no inventadas. HX01 real
-// también tiene un precalentamiento de vapor de 15s (CFG.durPreheat)
-// ANTES de esta secuencia — no está incluido aquí, es un paso aparte de
-// la estructura actual de CYCLES, pendiente si se quiere replicarlo.
+// Fases del ciclo y precalentamiento — reproducen EXACTAMENTE la
+// secuencia real de HX01 (app.js, rama main), confirmada leyendo el
+// código, no recordada de memoria:
 //
-// UV (GPIO18) ya NO es una fase con su propio relé: por instrucción
-// explícita, 'luzuv' se enciende una sola vez al principio del ciclo
-// (justo antes de que arranque vapor) y se apaga una sola vez al final
-// (justo después de que termine la última fase) — ver startCycle() y
-// cycleDone(). La tercera fase (antes "aroma") vuelve a comp: null: sigue
-// siendo un tramo visible con su propio nombre/duración, pero ya no
-// dispara su propio relé porque UV ya está encendida desde el principio.
+//   1. Puerta abre (sessAction paso 1).
+//   2. Cliente coloca casco, confirma (paso 2) -> startVaporCountdown():
+//      vapor ON + UV ON INMEDIATAMENTE, puerta se queda abierta, cuenta
+//      regresiva visible de CFG.durPreheat (15s real de HX01, no 5s).
+//   3. Al llegar a 0 -> arranca el ciclo cronometrado (runPhase()):
+//      fase 1 (vapor): vapor ON otra vez (ya estaba) + AHORA SÍ se
+//      asegura la puerta (doorSecureOnStart, solo en la fase 1).
+//   4. fase 2 (secado): sin cambios de puerta/UV.
+//   5. fase 3 (antes "aroma", ahora "Desinfección UV"): comp: null — no
+//      dispara relé propio, UV ya está encendida desde el paso 2; se
+//      apaga al terminar esta fase (ver cycleDone()).
+//
+// Duraciones tomadas literalmente de config.js/app.js de HX01 real
+// (CFG.durVapBasic/durSecBasic/durVapPremium/durSecPremium/durPreheat, y
+// el dur:3 hardcodeado de la tercera fase) — no inventadas.
+const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
+const PHASE_TRANSITION_MS = 400; // mismo buffer que HX01 real entre fases
+
 const CYCLES = {
   basic: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 45, comp: 'vapor' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 45, comp: 'vapor', doorSecureOnStart: true },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 120, comp: 'secado' },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 75, comp: 'vapor' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 75, comp: 'vapor', doorSecureOnStart: true },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 240, comp: 'secado' },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
@@ -679,6 +682,23 @@ function posAcknowledgeAndReturn() {
   go('s-idle');
 }
 
+// Botón "Continuar" tras PAYMENT_SUCCESS — consume la autorización del
+// pago real (requestCycle(): PAYMENT_SUCCESS -> CYCLE_IN_PROGRESS,
+// irreversible) y arranca el mismo flujo físico ya validado con el
+// código de promoción (activateSess() -> sessAction() ->
+// startVaporCountdown() -> startCycle() -> runPhase() -> cycleDone()).
+// Si requestCycle() falla (doble clic, pago ya consumido, estado
+// inválido) NO se toca el ESP32 en absoluto — se detiene aquí.
+function posContinueToCycle() {
+  try {
+    cuboPayment.requestCycle();
+  } catch (err) {
+    toast(`No se pudo iniciar el ciclo: ${err.message}`, 'er');
+    return;
+  }
+  activateSess();
+}
+
 function renderPosScreen(snapshot) {
   const statusEl = document.getElementById('pos-status-txt');
   const actionsEl = document.getElementById('pos-actions');
@@ -688,6 +708,7 @@ function renderPosScreen(snapshot) {
   const connectBtn = '<button class="btn-qr-manual" onclick="posConnect()">Conectar POS</button>';
   const cancelBtn = '<button class="btn-back" onclick="posCancel()">Cancelar</button>';
   const retryBtn = '<button class="btn-qr-manual" onclick="posRetry()">Reintentar</button>';
+  const continueBtn = '<button class="btn-qr-manual" onclick="posContinueToCycle()">Continuar</button>';
   const homeBtn = '<button class="btn-back" onclick="posAcknowledgeAndReturn()">Volver al inicio</button>';
 
   if (snapshot.event === 'init_failed') {
@@ -727,7 +748,7 @@ function renderPosScreen(snapshot) {
       break;
     case CUBO_STATES.PAYMENT_SUCCESS:
       statusEl.textContent = '✅ Pago aprobado. Listo para iniciar.';
-      actionsEl.innerHTML = homeBtn;
+      actionsEl.innerHTML = continueBtn + homeBtn;
       operation.send('PAYMENT_APPROVED');
       break;
     case CUBO_STATES.PAYMENT_DECLINED:
@@ -891,19 +912,104 @@ function logCycleWarning(context, err) {
   toast(`Aviso: ${context} no respondió.`, 'er');
 }
 
+// Un ciclo está "autorizado por Cubo real" si y solo si cuboPayment
+// existe y su máquina de estados está en CYCLE_IN_PROGRESS — eso SOLO
+// ocurre tras un requestCycle() exitoso (ver posContinueToCycle()) y es
+// la única fuente de verdad; el camino mock/código de promoción nunca
+// toca cuboPayment, así que esto siempre da false ahí.
+function isCuboAuthorizedCycle() {
+  return cuboPayment?.getStatus() === CUBO_STATES.CYCLE_IN_PROGRESS;
+}
+
+// Camino Cubo real: hay un pago real de por medio — fail-closed, detiene
+// el ciclo y deja un estado de error visible, sin ninguna acción
+// disponible para el cliente. Recuperación SIEMPRE manual desde Admin
+// (adminResetStuckCycle()) — nunca automática.
+function handleCuboCycleFailure(context, err) {
+  console.error(`[FreshTouch] ${context} — fallo real de ESP32 durante un ciclo pagado con Cubo:`, err);
+  clearInterval(cycTimer);
+  clearInterval(extraTimer);
+  clearInterval(doneTimer);
+  go('s-cycle');
+  const l = t();
+  document.getElementById('cyc-ico').textContent = '⚠️';
+  document.getElementById('cyc-ph-nm').textContent = l.cycle_error_nm;
+  document.getElementById('cyc-ph-lbl').textContent = `${l.cycle_error_lbl}: ${context} — ${err?.message || err}`;
+  toast(l.cycle_error_nm, 'er');
+}
+
+// Punto único de manejo de error para cualquier llamada real al ESP32
+// durante el ciclo. Decide cuál criterio aplica según si el ciclo actual
+// fue autorizado por un pago real de Cubo (isCuboAuthorizedCycle()):
+// mock/promoción nunca bloquea (igual que HX01 real); Cubo real sí,
+// porque ahí un fallo silencioso significaría cobrarle a un cliente por
+// un ciclo que no se completó físicamente. Devuelve true si el llamador
+// debe DETENERSE (no seguir la secuencia).
+function handleCycleStepFailure(context, err) {
+  if (isCuboAuthorizedCycle()) {
+    handleCuboCycleFailure(context, err);
+    return true;
+  }
+  logCycleWarning(context, err);
+  return false;
+}
+
 async function sessAction() {
   if (STATE.sessStep === 1) {
     try {
       await setDoor(true);
     } catch (err) {
-      logCycleWarning('Abrir puerta', err);
+      if (handleCycleStepFailure('Abrir puerta', err)) return;
     }
     operation.send('OPEN_DOOR');
     STATE.sessStep = 2;
     updateSessUI();
   } else {
-    startCycle();
+    startVaporCountdown();
   }
+}
+
+// Precalentamiento — reproduce startVaporCountdown() real de HX01: vapor
+// y UV se encienden juntos de inmediato, la puerta se queda abierta
+// durante todo este paso (se asegura recién al arrancar la fase 1, ver
+// runPhase()), con una cuenta regresiva visible de PREHEAT_SECONDS (15s
+// reales de HX01, CFG.durPreheat) antes de arrancar el ciclo cronometrado.
+async function startVaporCountdown() {
+  clearInterval(cycTimer);
+  clearInterval(extraTimer);
+  const btn = document.getElementById('sess-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  const l = t();
+  document.getElementById('sess-anim').textContent = '💧';
+  document.getElementById('sess-inst').textContent = l.sess_preheat_i;
+
+  try {
+    await esp32.setRelay('vapor', true);
+  } catch (err) {
+    if (handleCycleStepFailure('Encender vapor (precalentamiento)', err)) return;
+  }
+  try {
+    await esp32.setRelay('luzuv', true);
+  } catch (err) {
+    if (handleCycleStepFailure('Encender UV (precalentamiento)', err)) return;
+  }
+
+  let secs = PREHEAT_SECONDS;
+  const updatePreheatSub = () => {
+    const unit = secs === 1 ? l.sess_preheat_sec : l.sess_preheat_secs;
+    document.getElementById('sess-sub').textContent = `${l.sess_preheat_starting} ${secs} ${unit}...`;
+  };
+  updatePreheatSub();
+  const preheatTimer = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(preheatTimer);
+      startCycle();
+    } else {
+      updatePreheatSub();
+    }
+  }, 1000);
 }
 
 // --- Ciclo ---
@@ -927,22 +1033,6 @@ async function startCycle() {
   cyPhIdx = 0;
   document.getElementById('cyc-mid').textContent = machineConfig.machineId;
   go('s-cycle');
-  // Asegurar/retener la puerta antes de vapor/secado — igual que HX01
-  // real, un fallo aquí ya no detiene el ciclo, solo se registra.
-  try {
-    await setDoor(false);
-  } catch (err) {
-    logCycleWarning('Asegurar puerta', err);
-  }
-  // UV (GPIO18) encendida de fondo desde antes de que arranque vapor
-  // hasta después de que termine la última fase (ver apagado en
-  // cycleDone()) — ya no es una fase individual con su propio
-  // encendido/apagado.
-  try {
-    await esp32.setRelay('luzuv', true);
-  } catch (err) {
-    logCycleWarning('Encender UV', err);
-  }
   runPhase();
 }
 
@@ -963,7 +1053,17 @@ async function runPhase() {
     try {
       await esp32.setRelay(cyCurPh.comp, true);
     } catch (err) {
-      logCycleWarning(`${cyCurPh.comp} ON`, err);
+      if (handleCycleStepFailure(`${cyCurPh.comp} ON`, err)) return;
+    }
+  }
+  // Solo la fase 1 (vapor) asegura la puerta al arrancar — igual que el
+  // onStart() real de HX01 para esa fase (relay(vapor,true) seguido de
+  // relay(puerta,false)). Las fases 2 y 3 no tocan la puerta.
+  if (cyCurPh.doorSecureOnStart) {
+    try {
+      await setDoor(false);
+    } catch (err) {
+      if (handleCycleStepFailure('Asegurar puerta', err)) return;
     }
   }
   updateCycTimer();
@@ -977,11 +1077,11 @@ async function runPhase() {
         try {
           await esp32.setRelay(cyCurPh.comp, false);
         } catch (err) {
-          logCycleWarning(`${cyCurPh.comp} OFF`, err);
+          if (handleCycleStepFailure(`${cyCurPh.comp} OFF`, err)) return;
         }
       }
       cyPhIdx++;
-      setTimeout(runPhase, 200);
+      setTimeout(runPhase, PHASE_TRANSITION_MS);
     }
   }, 1000);
 }
@@ -1001,12 +1101,23 @@ async function cycleDone() {
   try {
     await esp32.setRelay('luzuv', false);
   } catch (err) {
-    logCycleWarning('Apagar UV', err);
+    if (handleCycleStepFailure('Apagar UV', err)) return;
   }
   try {
     await esp32.notifyCycleDone(STATE.plan);
   } catch (err) {
-    logCycleWarning('notifyCycleDone', err);
+    if (handleCycleStepFailure('notifyCycleDone', err)) return;
+  }
+  // Solo si este ciclo fue autorizado por un pago real de Cubo: consumir
+  // la autorización de verdad, únicamente después de que notifyCycleDone()
+  // haya tenido éxito arriba — nunca antes, nunca si falló (por eso este
+  // bloque va después de los dos try/catch de arriba, no antes).
+  if (isCuboAuthorizedCycle()) {
+    try {
+      cuboPayment.reportCycleComplete();
+    } catch (err) {
+      if (handleCycleStepFailure('reportCycleComplete', err)) return;
+    }
   }
   operation.send('CYCLE_DONE');
   go('s-done');
@@ -1017,7 +1128,7 @@ async function cycleDone() {
     try {
       await setDoor(true);
     } catch (err) {
-      logCycleWarning('Abrir puerta al finalizar', err);
+      handleCycleStepFailure('Abrir puerta al finalizar', err);
     }
   }, 1200);
 }
@@ -1143,6 +1254,7 @@ window.posCancel = posCancel;
 window.posRetry = posRetry;
 window.cancelPos = cancelPos;
 window.posAcknowledgeAndReturn = posAcknowledgeAndReturn;
+window.posContinueToCycle = posContinueToCycle;
 window.openCode = openCode;
 window.kp = kp;
 window.sessAction = sessAction;
