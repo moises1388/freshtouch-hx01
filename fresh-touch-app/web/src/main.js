@@ -827,6 +827,38 @@ function updateSessUI() {
   }
 }
 
+// Sonido de "click" al abrir/cerrar la puerta — portado literal del
+// playSound('puerta_abre'/'puerta_cierra') real de HX01 (app.js, rama
+// main): un tono sintetizado con Web Audio API, no depende de ningún
+// archivo de audio. Se agrega ahora porque todavía no está decidido/
+// instalado el mecanismo físico de puerta (electroimán) — mientras
+// tanto, el comando real al relé 'puerta' se sigue enviando siempre
+// (el cableado al pin queda listo para cuando se instale el mecanismo
+// real), y este sonido le da al operador una confirmación audible.
+function playDoorSound(open) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    if (open) {
+      osc.frequency.setValueAtTime(350, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(750, ctx.currentTime + 0.25);
+    } else {
+      osc.frequency.setValueAtTime(750, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + 0.25);
+    }
+    gain.gain.setValueAtTime(0.45, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.error('[FreshTouch] playDoorSound() falló:', err);
+  }
+}
+
 // ETAPA 2 — setDoor() envía el comando del relé "puerta" al ESP32.
 // LIMITACIÓN DOCUMENTADA (condición #10 de la autorización): un 200 OK
 // del ESP32 solo confirma que el comando fue RECIBIDO — este firmware no
@@ -843,6 +875,7 @@ function updateSessUI() {
 async function setDoor(open) {
   await esp32.setRelay('puerta', open);
   STATE.doorOpen = open;
+  playDoorSound(open);
   toast(open ? t().tk.door_opened : t().tk.door_closed, open ? 'in' : 'ok');
 }
 
@@ -1022,7 +1055,11 @@ async function startExtraDry() {
 
 function startDoneTimer() {
   clearInterval(doneTimer);
-  let s = 30;
+  // La puerta se abrió en cycleDone() (~1.2s después de llegar aquí) para
+  // que el cliente retire su casco. Tras 20s sin acción, se cierra sola
+  // y regresa a inicio — mismo patrón que HX01 real (startDoneTimer(),
+  // ahí a los 30s; aquí 20s por instrucción explícita).
+  let s = 20;
   doneTimer = setInterval(() => {
     s--;
     const el = document.getElementById('done-auto-n');
@@ -1034,10 +1071,19 @@ function startDoneTimer() {
   }, 1000);
 }
 
-function finishSess() {
+async function finishSess() {
   clearInterval(doneTimer);
   clearInterval(extraTimer);
   clearInterval(cycTimer);
+  // Cierre real de la puerta ("cerrar" = desconectar la energía/señal
+  // del relé) al volver a inicio — igual que HX01 real (finishSess()
+  // también cierra ahí, sin importar si llegó por el timeout de 20s o
+  // por el botón "Finalizar").
+  try {
+    await setDoor(false);
+  } catch (err) {
+    logCycleWarning('Cerrar puerta al finalizar', err);
+  }
   operation.send('RETURN_TO_IDLE');
   go('s-idle');
 }
