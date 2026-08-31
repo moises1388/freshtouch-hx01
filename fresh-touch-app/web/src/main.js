@@ -150,21 +150,26 @@ function currentPrice() {
 //      dispara relé propio, UV ya está encendida desde el paso 2; se
 //      apaga al terminar esta fase (ver cycleDone()).
 //
-// Duraciones tomadas literalmente de config.js/app.js de HX01 real
-// (CFG.durVapBasic/durSecBasic/durVapPremium/durSecPremium/durPreheat, y
-// el dur:3 hardcodeado de la tercera fase) — no inventadas.
+// Duración del precalentamiento tomada literalmente de HX01 real
+// (CFG.durPreheat). Duración de vapor (30s) y patrón de secado (pulsos
+// 50s-pausa 3s-50s) ajustados por instrucción explícita — ya no son las
+// de HX01 (esta máquina real necesita 15s para que el vaporizador
+// arranque, y el secado necesita esa pausa a mitad de camino) — mismas
+// para básico y premium, sin diferenciar por plan.
 const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
 const PHASE_TRANSITION_MS = 400; // mismo buffer que HX01 real entre fases
+const VAPOR_SECONDS = 30;
+const DRY_PULSES = [50, 3, 50]; // 50s encendido, pausa 3s, 50s encendido
 
 const CYCLES = {
   basic: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: 45, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: 120, comp: 'secado' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', comp: 'secado', pulses: DRY_PULSES },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: 75, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: 240, comp: 'secado' },
+    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', comp: 'secado', pulses: DRY_PULSES },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
 };
@@ -1036,12 +1041,21 @@ async function startCycle() {
   runPhase();
 }
 
+// Una fase puede ser un solo tramo (dur) o una secuencia de pulsos
+// ON/OFF (pulses: [segOn, segOff, segOn, ...], siempre empieza en ON) —
+// ej. secado: [50, 3, 50] = 50s encendido, pausa de 3s, 50s encendido
+// otra vez. cyDur/cySecs siguen representando el TOTAL de la fase (para
+// que el cronómetro/barra de progreso cuenten parejo sin saltos),
+// aunque el relé se apague durante los tramos de pausa. Fases sin
+// `pulses` (o sin `comp`) se comportan exactamente igual que antes: un
+// solo tramo, on al empezar, off al terminar.
 async function runPhase() {
   const phases = CYCLES[STATE.plan];
   if (cyPhIdx >= phases.length) { cycleDone(); return; }
   cyCurPh = phases[cyPhIdx];
-  cyDur = cyCurPh.dur;
-  cySecs = cyCurPh.dur;
+  const pulses = cyCurPh.pulses || [cyCurPh.dur];
+  cyDur = pulses.reduce((a, b) => a + b, 0);
+  cySecs = cyDur;
   const l = t();
   document.getElementById('cyc-ico').textContent = cyCurPh.ico;
   document.getElementById('cyc-ph-nm').textContent = l[cyCurPh.nm];
@@ -1049,6 +1063,8 @@ async function runPhase() {
   ['cp0', 'cp1', 'cp2'].forEach((id, i) => {
     document.getElementById(id).className = `cph${i < cyPhIdx ? ' done' : i === cyCurPh.ph ? ' cur' : i === cyPhIdx ? ' cur' : ''}`;
   });
+  let segIdx = 0; // par = tramo ON, impar = tramo OFF (pausa)
+  let segSecsLeft = pulses[0];
   if (cyCurPh.comp) {
     try {
       await esp32.setRelay(cyCurPh.comp, true);
@@ -1070,18 +1086,32 @@ async function runPhase() {
   clearInterval(cycTimer);
   cycTimer = setInterval(async () => {
     cySecs--;
+    segSecsLeft--;
     updateCycTimer();
-    if (cySecs <= 0) {
-      clearInterval(cycTimer);
-      if (cyCurPh.comp) {
-        try {
-          await esp32.setRelay(cyCurPh.comp, false);
-        } catch (err) {
-          if (handleCycleStepFailure(`${cyCurPh.comp} OFF`, err)) return;
-        }
+    if (segSecsLeft > 0) return;
+
+    const endingSegWasOn = segIdx % 2 === 0;
+    segIdx++;
+    const isLastSegment = segIdx >= pulses.length;
+
+    if (cyCurPh.comp) {
+      // Termina un tramo ON -> apaga (para pausar, o porque la fase
+      // terminó). Termina un tramo OFF (pausa) -> vuelve a encender
+      // para el siguiente pulso.
+      const nextState = !endingSegWasOn;
+      try {
+        await esp32.setRelay(cyCurPh.comp, nextState);
+      } catch (err) {
+        if (handleCycleStepFailure(`${cyCurPh.comp} ${nextState ? 'ON' : 'OFF'}`, err)) return;
       }
+    }
+
+    if (isLastSegment) {
+      clearInterval(cycTimer);
       cyPhIdx++;
       setTimeout(runPhase, PHASE_TRANSITION_MS);
+    } else {
+      segSecsLeft = pulses[segIdx];
     }
   }, 1000);
 }
