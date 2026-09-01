@@ -160,16 +160,21 @@ const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
 const PHASE_TRANSITION_MS = 400; // mismo buffer que HX01 real entre fases
 const VAPOR_SECONDS = 30;
 const DRY_PULSES = [50, 3, 50]; // 50s encendido, pausa 3s, 50s encendido
+// Texto visible en pantalla para cada tramo de DRY_PULSES, en el mismo
+// orden — para que quede explícito en qué etapa está, en vez de un
+// "Secando..." fijo los 103s (eso era lo que hacía parecer que "no
+// paraba"). Un solo arreglo aplicado a básico y premium, mismo patrón.
+const DRY_SEG_LABELS = ['cyc_dry_warmup', 'cyc_dry_pause', 'cyc_d'];
 
 const CYCLES = {
   basic: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', comp: 'secado', pulses: DRY_PULSES },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
     { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', comp: 'secado', pulses: DRY_PULSES },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
 };
@@ -1058,7 +1063,7 @@ async function runPhase() {
   cySecs = cyDur;
   const l = t();
   document.getElementById('cyc-ico').textContent = cyCurPh.ico;
-  document.getElementById('cyc-ph-nm').textContent = l[cyCurPh.nm];
+  document.getElementById('cyc-ph-nm').textContent = l[cyCurPh.segLabels ? cyCurPh.segLabels[0] : cyCurPh.nm];
   document.getElementById('cyc-ph-lbl').textContent = l[cyCurPh.lbl];
   ['cp0', 'cp1', 'cp2'].forEach((id, i) => {
     document.getElementById(id).className = `cph${i < cyPhIdx ? ' done' : i === cyCurPh.ph ? ' cur' : i === cyPhIdx ? ' cur' : ''}`;
@@ -1112,6 +1117,9 @@ async function runPhase() {
       setTimeout(runPhase, PHASE_TRANSITION_MS);
     } else {
       segSecsLeft = pulses[segIdx];
+      if (cyCurPh.segLabels) {
+        document.getElementById('cyc-ph-nm').textContent = t()[cyCurPh.segLabels[segIdx]];
+      }
     }
   }, 1000);
 }
