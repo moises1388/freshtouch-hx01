@@ -164,7 +164,7 @@ const DRY_PULSES = [50, 3, 50]; // 50s encendido, pausa 3s, 50s encendido
 // orden — para que quede explícito en qué etapa está, en vez de un
 // "Secando..." fijo los 103s (eso era lo que hacía parecer que "no
 // paraba"). Un solo arreglo aplicado a básico y premium, mismo patrón.
-const DRY_SEG_LABELS = ['cyc_dry_warmup', 'cyc_dry_pause', 'cyc_d'];
+const DRY_SEG_LABELS = ['cyc_d', 'cyc_dry_pause', 'cyc_d'];
 
 const CYCLES = {
   basic: [

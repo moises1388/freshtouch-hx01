@@ -36,7 +36,7 @@ const T = {
     cyc_title: 'Ciclo en Progreso', cyc_warn: 'NO ABRIR LA PUERTA DURANTE EL PROCESO',
     ph0: '💧 Vapor', ph1: '💨 Secado', ph2: '🌸 Aroma',
     cyc_v: 'Vaporizando', cyc_d: 'Secando', cyc_a: 'Desinfectando',
-    cyc_dry_warmup: 'Calentando secadora', cyc_dry_pause: 'Pausa — 3 segundos',
+    cyc_dry_pause: 'Pausa — 3 segundos',
     p1b: 'FASE 1 DE 3 - Vapor', p2b: 'FASE 2 DE 3 - Secado', p3b: 'FASE 3 DE 3 - Desinfección UV',
     p1p: 'FASE 1 DE 3 - Vapor Extendido', p2p: 'FASE 2 DE 3 - Secado Premium', p3p: 'FASE 3 DE 3 - Desinfección UV',
     // Solo se usa cuando un fallo real de ESP32 ocurre durante un ciclo
@@ -108,7 +108,7 @@ const T = {
     cyc_title: 'Cycle in Progress', cyc_warn: 'DO NOT OPEN THE DOOR DURING THE PROCESS',
     ph0: '💧 Steam', ph1: '💨 Drying', ph2: '🌸 Aroma',
     cyc_v: 'Steaming', cyc_d: 'Drying', cyc_a: 'Disinfecting',
-    cyc_dry_warmup: 'Warming up dryer', cyc_dry_pause: 'Pause — 3 seconds',
+    cyc_dry_pause: 'Pause — 3 seconds',
     p1b: 'PHASE 1 OF 3 - Steam', p2b: 'PHASE 2 OF 3 - Drying', p3b: 'PHASE 3 OF 3 - UV Disinfection',
     p1p: 'PHASE 1 OF 3 - Extended Steam', p2p: 'PHASE 2 OF 3 - Premium Drying', p3p: 'PHASE 3 OF 3 - UV Disinfection',
     cycle_error_nm: 'Machine Error', cycle_error_lbl: 'Requires operator attention',
