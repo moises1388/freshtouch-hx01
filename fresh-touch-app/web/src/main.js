@@ -168,12 +168,12 @@ const DRY_SEG_LABELS = ['cyc_d', 'cyc_dry_pause', 'cyc_d'];
 
 const CYCLES = {
   basic: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1b', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1b', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2b', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
-    { nm: 'cyc_v', ico: '🌫️', lbl: 'p1p', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1p', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
     { nm: 'cyc_d', ico: '💨', lbl: 'p2p', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
