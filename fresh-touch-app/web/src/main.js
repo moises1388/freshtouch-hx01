@@ -152,29 +152,28 @@ function currentPrice() {
 //
 // Duración del precalentamiento tomada literalmente de HX01 real
 // (CFG.durPreheat). Duración de vapor (30s) y patrón de secado (pulsos
-// 50s-pausa 3s-50s) ajustados por instrucción explícita — ya no son las
-// de HX01 (esta máquina real necesita 15s para que el vaporizador
-// arranque, y el secado necesita esa pausa a mitad de camino) — mismas
-// para básico y premium, sin diferenciar por plan.
+// ajustados por instrucción explícita — ya no son las de HX01 (esta
+// máquina real necesita 15s para que el vaporizador arranque). Secado
+// vuelve a ser un solo tramo continuo de 2min (sin pausa) tras cambiar
+// la secadora física; vapor ahora se diferencia por plan (básico 30s,
+// premium 45s, secadora más potente en premium).
 const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
-const PHASE_TRANSITION_MS = 400; // mismo buffer que HX01 real entre fases
-const VAPOR_SECONDS = 30;
-const DRY_PULSES = [50, 3, 50]; // 50s encendido, pausa 3s, 50s encendido
-// Texto visible en pantalla para cada tramo de DRY_PULSES, en el mismo
-// orden — para que quede explícito en qué etapa está, en vez de un
-// "Secando..." fijo los 103s (eso era lo que hacía parecer que "no
-// paraba"). Un solo arreglo aplicado a básico y premium, mismo patrón.
-const DRY_SEG_LABELS = ['cyc_d', 'cyc_dry_pause', 'cyc_d'];
+// Buffer entre fases: 1-2s para que los relays no queden encendidos al
+// mismo tiempo al pasar de un componente a otro (ej. vapor -> secado).
+const PHASE_TRANSITION_MS = 1500;
+const VAPOR_SECONDS_BASIC = 30;
+const VAPOR_SECONDS_PREMIUM = 45;
+const DRY_SECONDS = 120;
 
 const CYCLES = {
   basic: [
-    { nm: 'cyc_v', ico: '💧', lbl: 'p1b', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1b', dur: VAPOR_SECONDS_BASIC, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: DRY_SECONDS, comp: 'secado' },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
   ],
   premium: [
-    { nm: 'cyc_v', ico: '💧', lbl: 'p1p', dur: VAPOR_SECONDS, comp: 'vapor', doorSecureOnStart: true },
-    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', comp: 'secado', pulses: DRY_PULSES, segLabels: DRY_SEG_LABELS },
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1p', dur: VAPOR_SECONDS_PREMIUM, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: DRY_SECONDS, comp: 'secado' },
     { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
   ],
 };
