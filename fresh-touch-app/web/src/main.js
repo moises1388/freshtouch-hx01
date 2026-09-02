@@ -29,7 +29,7 @@ import { createMachineConfigStore } from './machineConfig/machineConfigStore.js'
 import { validateDraft } from './machineConfig/provisioningValidation.js';
 import { showScreen } from './ui/navigation.js';
 import { initBubbles } from './ui/bubbles.js';
-import { t, getLang, setLang, applyLang } from './ui/i18n.js';
+import { t, applyLang } from './ui/i18n.js';
 
 // --- Composición de la app ---
 // Fase 2: si la máquina ya fue configurada (provisioning, ver más abajo),
@@ -198,13 +198,6 @@ function go(id) {
     clearTimeout(qrPollTO);
   }
   showScreen(id);
-}
-
-// --- Idioma ---
-function toggleLang() {
-  setLang(getLang() === 'es' ? 'en' : 'es');
-  applyLang(machineConfig.prices);
-  if (STATE.role) renderAdminBody();
 }
 
 // --- Admin: entrada oculta (mismo patrón que admTap() de HX01) ---
@@ -842,6 +835,13 @@ function updateSessUI() {
   const l = t();
   ['ss1', 'ss2', 'ss3'].forEach((id, i) => document.getElementById(id).classList.toggle('on', i < STATE.sessStep));
   const btn = document.getElementById('sess-btn');
+  // El botón se deshabilita al arrancar el precalentamiento
+  // (startVaporCountdown()) y nunca se reactivaba para la siguiente
+  // sesión — quedaba deshabilitado hasta refrescar la página. Se
+  // reactiva aquí porque este es el punto de entrada de toda sesión
+  // nueva (activateSess() -> go('s-session')).
+  btn.disabled = false;
+  btn.style.opacity = '';
   if (STATE.sessStep === 1) {
     document.getElementById('sess-anim').textContent = '🚪';
     document.getElementById('sess-inst').textContent = l.sess_open_i;
@@ -961,6 +961,16 @@ function handleCycleStepFailure(context, err) {
   }
   logCycleWarning(context, err);
   return false;
+}
+
+// Botón "← Volver" de s-session — el cliente todavía no inició el
+// ciclo cronometrado (solo pudo, a lo sumo, abrir la puerta), así que
+// RESET es seguro: regresa operationState a IDLE (transición ya
+// existente desde READY_TO_START y DOOR_OPEN, ver operationStateMachine.js)
+// y vuelve a la pantalla de inicio, igual que cancelQR()/cancelPos().
+function cancelSession() {
+  operation.send('RESET');
+  go('s-idle');
 }
 
 async function sessAction() {
@@ -1275,7 +1285,6 @@ esp32.connect().then((result) => {
 });
 
 window.go = go;
-window.toggleLang = toggleLang;
 window.admTap = admTap;
 window.closePIN = closePIN;
 window.pinTap = pinTap;
@@ -1295,6 +1304,7 @@ window.posContinueToCycle = posContinueToCycle;
 window.openCode = openCode;
 window.kp = kp;
 window.sessAction = sessAction;
+window.cancelSession = cancelSession;
 window.startExtraDry = startExtraDry;
 window.finishSess = finishSess;
 window.submitInvoice = submitInvoice;

@@ -249,8 +249,7 @@ function applyLang(prices) {
   set('temg-open', 'textContent', l.emg_open);
   set('temg-cancel', 'textContent', l.cancel);
   set('tsusp-title', 'textContent', l.susp_title);
-  set('lang-btn', 'textContent', l.lang);
-  ['tp-back', 'tpay-back', 'tcode-back', 'tinv-back', 'tqr-back'].forEach((id) => set(id, 'textContent', l.back));
+  ['tp-back', 'tpay-back', 'tcode-back', 'tinv-back', 'tqr-back', 'tsess-back'].forEach((id) => set(id, 'textContent', l.back));
 }
 
 export { T, t, getLang, setLang, applyLang };

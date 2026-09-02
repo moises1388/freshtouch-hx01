@@ -19,7 +19,6 @@
 <body>
 <div class="bubbles" id="bbl"></div>
 <div id="wm"><div class="wm-t">FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch &nbsp;&nbsp; FreshTouch</div></div>
-<button id="lang-btn" onclick="toggleLang()">🇺🇸 English</button>
 
 <!-- Fase 1 — etiqueta discreta, no forma parte del diseño de HX01, no interfiere con la comparación visual de las pantallas -->
 <div class="fase1-tag">FASE 1 — fresh-touch-app</div>
@@ -203,7 +202,7 @@
   <div class="hdr">
     <img class="hdr-logo" src="assets/img/img04.png" alt="HYDROX">
     <div><div class="hdr-t" id="tsess-title">Sesion Activa</div><div class="hdr-s" id="sess-plan-hdr">Plan Basico</div></div>
-    <div class="sess-timeout" id="sess-timeout">⏱ 2:00</div>
+    <button class="btn-back" onclick="cancelSession()" id="tsess-back">← Volver</button>
   </div>
   <div class="sess-body">
     <div class="steps-row">
