@@ -17,7 +17,14 @@ import { createOperationSession } from './operationState/operationStateMachine.j
 import { createMockPaymentProvider } from './payment/mockPaymentProvider.js';
 import { createCuboCardProvider } from './payment/cuboCardProvider.js';
 import { STATES as CUBO_STATES } from './payment/paymentStateMachine.js';
+import { CUBO_EVENTS } from './payment/cubo/cuboEvents.js';
 import { setApiKey, getApiKey, hasApiKey, clearApiKey } from './payment/cubo/apiKeySession.js';
+import {
+  getMakeWebhookConfig,
+  saveMakeWebhookConfig,
+  hasMakeWebhookConfig,
+  clearMakeWebhookConfig,
+} from './payment/makeWebhookConfig.js';
 import { createMockEsp32Controller } from './esp32/mockEsp32Controller.js';
 import { createRealEsp32Adapter } from './esp32/realEsp32Adapter.js';
 import { assertCanStartCycle } from './esp32/cycleSafety.js';
@@ -41,15 +48,16 @@ import { t, applyLang } from './ui/i18n.js';
 // ESP32 real desde cualquier navegador (incluida una tablet) sin editar
 // código ni tocar lo que ya esté provisionado. Nunca se persiste (no
 // llama a configStore.save()): vive solo en memoria mientras esta pestaña
-// tenga esos parámetros en la URL. Cualquier esp32Mode que no sea
-// exactamente "mock" o "real" se ignora — fail-closed, no se acepta un
-// modo inventado ni a medias.
+// tenga esos parámetros en la URL. En producción ya no existe un modo
+// "mock" que activar — el único valor de esp32Mode que este override
+// acepta es "real" (ej. para apuntar rápido a una IP nueva sin pasar por
+// Admin); cualquier otro valor se ignora.
 function applyUrlConfigOverrides(config) {
   const params = new URLSearchParams(window.location.search);
   const mode = params.get('esp32Mode');
   const address = params.get('esp32Address');
   const overrides = {};
-  if (mode === 'mock' || mode === 'real') overrides.esp32Mode = mode;
+  if (mode === 'real') overrides.esp32Mode = mode;
   if (address) overrides.esp32Address = address;
   return Object.keys(overrides).length > 0 ? { ...config, ...overrides } : config;
 }
@@ -120,8 +128,10 @@ const STATE = {
 
 let toastTmr = null;
 let qrTimerInterval = null;
-let qrTimerSecs = 180;
+let qrTimerSecs = 300; // se reasigna a QR_TIMEOUT_SECONDS en startQRTimer()
+let qrPollInterval = null;
 let qrPollTO = null;
+let qrBtnTO = null;
 let cycTimer = null;
 let extraTimer = null;
 let doneTimer = null;
@@ -158,6 +168,11 @@ function currentPrice() {
 // la secadora física; vapor ahora se diferencia por plan (básico 30s,
 // premium 45s, secadora más potente en premium).
 const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
+// QR Cubo vía Make — mismos valores por defecto que CFG.qrTimeoutSec /
+// CFG.qrPollDelaySec / CFG.qrPollIntervalSec en HX01 real.
+const QR_TIMEOUT_SECONDS = 300;
+const QR_POLL_DELAY_SECONDS = 60;
+const QR_POLL_INTERVAL_SECONDS = 5;
 // Buffer entre fases: 1-2s para que los relays no queden encendidos al
 // mismo tiempo al pasar de un componente a otro (ej. vapor -> secado).
 const PHASE_TRANSITION_MS = 1500;
@@ -324,8 +339,7 @@ async function renderAdminBody() {
   }
 
   if (canProvision) {
-    const hasSecret = await nativeBridge.hasSecret('cuboApiKey');
-    html += renderProvisioningSection(hasSecret);
+    html += renderProvisioningSection();
     html += `<div class="admin-panel-section"><h3>Exportar / Reset</h3>
       <button onclick="window.__ftaExportConfig()">Exportar configuración (sin secretos)</button>
       <button onclick="window.__ftaResetMachine()">Reset de máquina (mock)</button>
@@ -344,7 +358,7 @@ async function renderAdminBody() {
 // #adm-body, y #adm-body nunca tiene contenido en index.html (solo se
 // llena vía renderAdminBody(), que solo se invoca después de un PIN
 // correcto en checkPIN()). El cliente normal jamás ve este formulario.
-function renderProvisioningSection(hasSecret) {
+function renderProvisioningSection() {
   // Si el último intento de guardar falló la validación, se sigue
   // mostrando lo que la persona escribió (STATE.provisioningDraft), no la
   // config vieja — si no, el error aparecería junto a un campo que ya no
@@ -398,35 +412,44 @@ function renderProvisioningSection(hasSecret) {
       ${field('prov-pricePremium', 'Precio Premium', c.prices.premium, 'prices.premium', { type: 'number' })}
 
       <div class="prov-group-title">Pago</div>
-      ${select('prov-paymentProvider', 'Proveedor de pago', c.paymentProvider, 'paymentProvider', ['mock', 'cubo'])}
-      ${select('prov-cuboEnvironment', 'Cubo environment', c.cuboEnvironment, 'cuboEnvironment', ['sandbox', 'production'])}
+      <div class="admin-panel-row"><span class="k">Proveedor de pago</span><span class="v diag-ok">Cubo (producción)</span></div>
+      <div class="admin-panel-row"><span class="k">Cubo environment</span><span class="v diag-ok">production</span></div>
       ${field('prov-cuboPosId', 'Cubo POS ID', c.cuboPosId, 'cuboPosId')}
       ${field('prov-cuboPosSerial', 'Cubo POS Serial', c.cuboPosSerial, 'cuboPosSerial')}
 
-      <div class="prov-group-title">Secretos (SecretProvider — mock, NOT PRODUCTION)</div>
+      <div class="prov-group-title">Secretos (guardados solo en este navegador — nunca en GitHub)</div>
       <div class="admin-panel-row">
         <span class="k">Cubo API Key</span>
-        <span class="v ${hasSecret ? 'diag-ok' : 'diag-mock'}">${hasSecret ? 'configurada (mock, valor no retenido)' : 'no configurada'}</span>
+        <span class="v ${hasApiKey() ? 'diag-ok' : 'diag-bad'}">${hasApiKey() ? 'configurada' : 'no configurada'}</span>
       </div>
-      <div class="mock-controls">
-        <span class="mock-controls-label">Solo simula la existencia — no hay campo real para escribir la clave (eso llega en Fase 6 con Keystore)</span>
-        <button onclick="window.__ftaSimSetSecret()">Simular guardar Cubo API Key (mock)</button>
-        <button onclick="window.__ftaSimClearSecret()">Borrar (mock)</button>
-      </div>
-
-      <div class="prov-group-title">Cubo — API Key real (integración de esta fase)</div>
       <div class="admin-panel-row">
-        <span class="k">Estado (sesión del navegador)</span>
-        <span class="v ${hasApiKey() ? 'diag-ok' : 'diag-bad'}">${hasApiKey() ? 'configurada para esta sesión' : 'no configurada'}</span>
+        <span class="k">Webhooks de Make</span>
+        <span class="v ${hasMakeWebhookConfig() ? 'diag-ok' : 'diag-bad'}">${hasMakeWebhookConfig() ? 'configurados' : 'no configurados'}</span>
       </div>
       <div class="mock-controls">
-        <span class="mock-controls-label">Vive solo en memoria mientras esta pestaña esté abierta — nunca se guarda en NVS ni en ningún almacenamiento persistente del navegador. Se pierde al recargar. Necesaria para "Pagar con Tarjeta" en la pantalla de cliente.</span>
+        <span class="mock-controls-label">Se guardan en este navegador y quedan configurados hasta que los borres — no hace falta volver a escribirlos en cada sesión. Un campo en blanco al guardar deja el valor ya guardado tal como está, no lo borra.</span>
         <div class="prov-field">
           <label class="prov-lbl" for="prov-cuboApiKey">Cubo API Key</label>
-          <input class="prov-inp" id="prov-cuboApiKey" type="password" placeholder="Se pierde al recargar la página">
+          <input class="prov-inp" id="prov-cuboApiKey" type="password" placeholder="${hasApiKey() ? '••••••••' : 'Sin configurar'}">
         </div>
-        <button onclick="window.__ftaSetCuboApiKey()">Usar en esta sesión</button>
-        <button onclick="window.__ftaClearCuboApiKey()">Borrar de esta sesión</button>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-salesWebhookUrl">Make — Webhook Ventas</label>
+          <input class="prov-inp" id="prov-salesWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-qrWebhookUrl">Make — Webhook Cubo (genera QR)</label>
+          <input class="prov-inp" id="prov-qrWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-qrPollWebhookUrl">Make — Webhook Poll (verifica pago)</label>
+          <input class="prov-inp" id="prov-qrPollWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-webhookSecret">Make — Token (x-freshtouch-token)</label>
+          <input class="prov-inp" id="prov-webhookSecret" type="password" placeholder="${hasMakeWebhookConfig() ? '••••••••' : 'Sin configurar'}">
+        </div>
+        <button onclick="window.__ftaSaveSecrets()">Guardar secretos</button>
+        <button onclick="window.__ftaClearSecrets()">Borrar todos los secretos</button>
       </div>
 
       <div class="prov-actions">
@@ -450,8 +473,10 @@ function readProvisioningDraft() {
       basic: Number(val('prov-priceBasic')),
       premium: Number(val('prov-pricePremium')),
     },
-    paymentProvider: val('prov-paymentProvider'),
-    cuboEnvironment: val('prov-cuboEnvironment'),
+    // Ya no son campos editables — producción solo soporta Cubo/production
+    // (ver provisioningValidation.js).
+    paymentProvider: 'cubo',
+    cuboEnvironment: 'production',
     cuboPosId: val('prov-cuboPosId'),
     cuboPosSerial: val('prov-cuboPosSerial'),
   };
@@ -485,34 +510,38 @@ async function restoreProvisioning() {
   toast('Restaurado a configuración mock', 'in');
 }
 
-async function simSetSecret() {
-  await nativeBridge.saveSecret('cuboApiKey', 'MOCK-VALUE-NEVER-RETAINED');
-  await renderAdminBody();
-}
-
-async function simClearSecret() {
-  await nativeBridge.clearSecret('cuboApiKey');
-  await renderAdminBody();
-}
-
-async function setCuboApiKey() {
-  const input = document.getElementById('prov-cuboApiKey');
-  const value = input ? input.value : '';
-  if (!value) {
-    toast('Escribe una API key antes de usarla', 'er');
-    return;
+// Guarda de una vez el secreto de Cubo y los 4 valores de Make (webhooks +
+// token) — cada campo en blanco deja el valor ya guardado tal como está
+// (ver saveMakeWebhookConfig()), así que reguardar solo uno no borra los
+// demás. Persisten en el navegador (ver apiKeySession.js/
+// makeWebhookConfig.js) — nunca en machineConfig ni en este repo.
+async function saveSecrets() {
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const cuboApiKey = val('prov-cuboApiKey');
+  if (cuboApiKey) {
+    setApiKey(cuboApiKey);
+    resetCuboPayment(); // fuerza reconstruir el proveedor con la clave nueva
   }
-  setApiKey(value);
-  resetCuboPayment(); // fuerza reconstruir el proveedor con la clave nueva
+  const patch = {};
+  const salesWebhookUrl = val('prov-salesWebhookUrl');
+  const qrWebhookUrl = val('prov-qrWebhookUrl');
+  const qrPollWebhookUrl = val('prov-qrPollWebhookUrl');
+  const webhookSecret = val('prov-webhookSecret');
+  if (salesWebhookUrl) patch.salesWebhookUrl = salesWebhookUrl;
+  if (qrWebhookUrl) patch.qrWebhookUrl = qrWebhookUrl;
+  if (qrPollWebhookUrl) patch.qrPollWebhookUrl = qrPollWebhookUrl;
+  if (webhookSecret) patch.webhookSecret = webhookSecret;
+  if (Object.keys(patch).length > 0) saveMakeWebhookConfig(patch);
   await renderAdminBody();
-  toast('API key de Cubo activa para esta sesión (se pierde al recargar)', 'ok');
+  toast('Secretos guardados en este navegador', 'ok');
 }
 
-async function clearCuboApiKey() {
+async function clearSecrets() {
   clearApiKey();
+  clearMakeWebhookConfig();
   resetCuboPayment();
   await renderAdminBody();
-  toast('API key de Cubo borrada de esta sesión', 'in');
+  toast('Secretos borrados de este navegador', 'in');
 }
 
 function exportConfig() {
@@ -540,22 +569,102 @@ function selectPlan(plan) {
   go('s-payment');
 }
 
-// --- QR (mock — sin Cubo real) ---
+// --- QR Cubo vía Make (producción) ---
+// Puerto literal del flujo real de HX01 (app.js, rama main): openQR()
+// pide un link de pago a qrWebhookUrl, lo muestra como QR (mismo
+// servicio api.qrserver.com que usa HX01 real), y startQRPoll() consulta
+// qrPollWebhookUrl cada QR_POLL_INTERVAL_SECONDS hasta ver confirmado. El
+// botón "Confirmar pago manualmente" queda oculto (hideQRManualBtn) hasta
+// armQRManualBtn() lo muestra a los 60s, como respaldo si el poll falla.
 function openQR() {
   const price = currentPrice();
   document.getElementById('qr-amt-lbl').textContent = `Q${price}.00`;
   document.getElementById('qr-amt-big').textContent = `Q${price}.00`;
   document.getElementById('qr-img').src =
-    'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">MOCK — sin Cubo real</text></svg>';
-  go('s-qr');
+    'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
+  STATE.qrSince = Math.floor(Date.now() / 1000);
+  hideQRManualBtn();
   startQRTimer();
+  go('s-qr');
   operation.send('REQUEST_PAYMENT');
   payment.selectService({ label: STATE.plan, amount: price });
+  requestCuboQrLink(price);
+}
+
+async function requestCuboQrLink(price) {
+  const cfg = getMakeWebhookConfig();
+  if (!cfg.qrWebhookUrl) {
+    toast('Pago con QR no configurado — falta el webhook de Make en Admin.', 'er');
+    stopQR();
+    go('s-payment');
+    return;
+  }
+  try {
+    const resp = await fetch(cfg.qrWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-freshtouch-token': cfg.webhookSecret || '' },
+      body: JSON.stringify({ maquina: machineConfig.machineId, monto: price }),
+    });
+    const data = await resp.json();
+    if (data.paymentUrl) {
+      document.getElementById('qr-img').src =
+        `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.paymentUrl)}`;
+      startQRPoll();
+      armQRManualBtn();
+    } else {
+      toast('Error al generar link de pago', 'er');
+      stopQR();
+      go('s-payment');
+    }
+  } catch (err) {
+    console.error('[FreshTouch] requestCuboQrLink() falló:', err);
+    toast('Error de conexión con servidor de pago', 'er');
+    stopQR();
+    go('s-payment');
+  }
+}
+
+function startQRPoll() {
+  clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
+  const doPoll = async () => {
+    try {
+      const cfg = getMakeWebhookConfig();
+      const price = currentPrice();
+      const url = `${cfg.qrPollWebhookUrl}?maquina=${encodeURIComponent(machineConfig.machineId)}&monto=${price}&desde=${STATE.qrSince}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (data.confirmado === true || data.confirmado === 'true' || data.confirmado === 'confirmado') {
+        stopQR();
+        qrManualConfirm();
+      }
+    } catch (err) {
+      // Ignorar errores de polling — igual que HX01 real, el botón manual
+      // sigue como respaldo si esto nunca confirma.
+    }
+  };
+  qrPollTO = setTimeout(() => {
+    doPoll();
+    qrPollInterval = setInterval(doPoll, QR_POLL_INTERVAL_SECONDS * 1000);
+  }, QR_POLL_DELAY_SECONDS * 1000);
+}
+
+function hideQRManualBtn() {
+  clearTimeout(qrBtnTO);
+  qrBtnTO = null;
+  document.getElementById('tqr-btn').style.display = 'none';
+}
+
+function armQRManualBtn() {
+  clearTimeout(qrBtnTO);
+  qrBtnTO = setTimeout(() => {
+    document.getElementById('tqr-btn').style.display = '';
+  }, 60000);
 }
 
 function startQRTimer() {
   clearInterval(qrTimerInterval);
-  qrTimerSecs = 180;
+  qrTimerSecs = QR_TIMEOUT_SECONDS;
   updateQRTimer();
   qrTimerInterval = setInterval(() => {
     qrTimerSecs--;
@@ -575,7 +684,9 @@ function updateQRTimer() {
 
 function stopQR() {
   clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
   clearTimeout(qrPollTO);
+  hideQRManualBtn();
 }
 
 function cancelQR() {
@@ -586,11 +697,43 @@ function cancelQR() {
 
 async function qrManualConfirm() {
   stopQR();
+  const amt = currentPrice();
+  registrarVenta(amt, 'QR-CUBO'); // disparar-y-olvidar, igual que HX01 real
   await payment.connectPos();
   await payment.createPayment({ outcome: 'SUCCESS' });
   toast(t().tk.qr_ok, 'ok');
   if (payment.canStartCycle()) operation.send('PAYMENT_APPROVED');
-  setTimeout(activateSess, 400);
+  setTimeout(activateSess, 600);
+}
+
+// Reporta una venta a Make (Google Sheet + Telegram de HX01) — no
+// crítico: si falla, solo se registra en consola, nunca bloquea el flujo
+// del cliente. Mismo webhook/forma exacta que registrarVenta() en HX01
+// real (app.js, rama main), machineId siempre HX02 (nunca se mezcla con
+// HX01 en el mismo registro).
+async function registrarVenta(monto, metodoPago, codigoUsado = '') {
+  const cfg = getMakeWebhookConfig();
+  if (!cfg.salesWebhookUrl) {
+    console.warn('[FreshTouch] registrarVenta(): salesWebhookUrl no configurado — venta no reportada.');
+    return;
+  }
+  try {
+    await fetch(cfg.salesWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'registrar_venta',
+        maquina: machineConfig.machineId,
+        monto,
+        plan: STATE.plan,
+        metodo_pago: metodoPago,
+        codigo_usado: codigoUsado,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (err) {
+    console.warn('[FreshTouch] Webhook de venta falló (no crítico):', err);
+  }
 }
 
 // --- Pago con tarjeta — POS Cubo QPOS Cute (real, Web Bluetooth) ---
@@ -752,6 +895,14 @@ function renderPosScreen(snapshot) {
       statusEl.textContent = '✅ Pago aprobado. Listo para iniciar.';
       actionsEl.innerHTML = continueBtn + homeBtn;
       operation.send('PAYMENT_APPROVED');
+      // Reportar la venta solo en la notificación del resultado real de la
+      // transacción (snapshot.event === TRANSACTION_RESULT) — este mismo
+      // case también se re-ejecuta si el POS se desconecta después de un
+      // pago ya aprobado (ver handleDisconnected() en cuboCardProvider.js);
+      // sin este guard, esa re-notificación duplicaría la venta en Make.
+      if (snapshot.event === CUBO_EVENTS.TRANSACTION_RESULT) {
+        registrarVenta(currentPrice(), 'POS-CUBO');
+      }
       break;
     case CUBO_STATES.PAYMENT_DECLINED:
       statusEl.textContent = `❌ Pago rechazado.${snapshot.message ? ' ' + snapshot.message : ''}`;
@@ -1313,8 +1464,6 @@ window.__ftaExportConfig = exportConfig;
 window.__ftaResetMachine = resetMachine;
 window.__ftaSaveProvisioning = saveProvisioning;
 window.__ftaRestoreProvisioning = restoreProvisioning;
-window.__ftaSimSetSecret = simSetSecret;
-window.__ftaSimClearSecret = simClearSecret;
-window.__ftaSetCuboApiKey = setCuboApiKey;
-window.__ftaClearCuboApiKey = clearCuboApiKey;
+window.__ftaSaveSecrets = saveSecrets;
+window.__ftaClearSecrets = clearSecrets;
 window.__ftaResetStuckCycle = adminResetStuckCycle;

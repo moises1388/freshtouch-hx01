@@ -50,6 +50,21 @@ function defaultStorage() {
   return createInMemoryStorage();
 }
 
+// Store genérico de clave/valor sobre el mismo backend (localStorage o el
+// fallback en memoria) — para que otros secretos persistentes del
+// navegador (API key de Cubo, webhooks de Make, ver payment/cubo/
+// apiKeySession.js y payment/makeWebhookConfig.js) NUNCA tengan que tocar
+// localStorage directamente: solo este archivo lo hace (ver isolation
+// test que lo exige).
+function createKeyValueStore({ storage } = {}) {
+  const backend = storage || defaultStorage();
+  return {
+    get: (key) => backend.getItem(key),
+    set: (key, value) => backend.setItem(key, value),
+    remove: (key) => backend.removeItem(key),
+  };
+}
+
 function createMachineConfigStore({ storage } = {}) {
   const backend = storage || defaultStorage();
   const keyFor = (machineId) => `${NAMESPACE}${machineId}`;
@@ -97,4 +112,4 @@ function createMachineConfigStore({ storage } = {}) {
   return { isProvisioned, getActiveMachineId, load, save, listMachineIds, reset };
 }
 
-export { createMachineConfigStore, createInMemoryStorage };
+export { createMachineConfigStore, createInMemoryStorage, createKeyValueStore };

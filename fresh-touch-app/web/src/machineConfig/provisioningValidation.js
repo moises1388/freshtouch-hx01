@@ -6,11 +6,15 @@
 // inválido" (precio negativo, environment desconocido, etc.).
 //
 // Deliberadamente NO valida formatos específicos de Cubo (patrón real de
-// POS ID/Serial) — eso no está confirmado con Cubo todavía. Cuando
-// paymentProvider es 'cubo' solo exige que POS ID/Serial no estén vacíos.
+// POS ID/Serial) — eso no está confirmado con Cubo todavía. paymentProvider
+// solo exige que POS ID/Serial no estén vacíos.
+//
+// 'mock' (paymentProvider) y 'sandbox' (cuboEnvironment) se retiraron por
+// instrucción explícita al pasar a producción: ya no hay opción de
+// "activar modo real", el único modo soportado es el real.
 
-const PAYMENT_PROVIDERS = Object.freeze(['mock', 'cubo']);
-const CUBO_ENVIRONMENTS = Object.freeze(['sandbox', 'production']);
+const PAYMENT_PROVIDERS = Object.freeze(['cubo']);
+const CUBO_ENVIRONMENTS = Object.freeze(['production']);
 const MACHINE_ID_PATTERN = /^[A-Za-z0-9_-]{2,32}$/;
 const ESP32_ADDRESS_PATTERN = /^[A-Za-z0-9.-]+$/;
 

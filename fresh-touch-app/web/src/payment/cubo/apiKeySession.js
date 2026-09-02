@@ -1,37 +1,37 @@
-// apiKeySession — la API key de Cubo vive SOLO aquí, en una variable de
-// módulo en memoria. Nunca en machineConfig (que es pública/persistida vía
-// MachineConfigStore — ver machineConfig/machineConfigContract.js, que ya
-// rechaza con un throw fuerte cualquier objeto de configuración que
-// contenga una clave así), nunca en nativeBridge (cuyo mock está diseñado
-// a propósito para NUNCA retener el valor real de un secreto — ver
-// nativeBridge/mockNativeBridge.js), nunca en el almacenamiento persistente
-// del navegador, nunca escrita a disco. Se pierde al recargar la página —
-// exactamente la "modalidad de laboratorio ya validada" que pidió la
-// autorización: un campo de contraseña en pantalla, solo para la sesión
-// del navegador.
+// apiKeySession — la API key de Cubo se guarda en el navegador vía el
+// mismo store de clave/valor que expone machineConfigStore.js (este
+// archivo nunca toca el almacenamiento del navegador directamente — ver
+// isolation test que lo exige), en un namespace propio, separado de
+// machineConfig/MachineConfigStore —
+// machineConfigContract.js rechaza con un throw fuerte cualquier objeto de
+// configuración que contenga una clave así, así que este archivo NUNCA
+// pasa por ahí. Nunca en el código/commits de este repo.
 //
-// Deja la arquitectura preparada para Fase futura (NativeBridge/Android
-// Keystore): el día que exista un backend real de secretos, esta misma
-// interfaz (hasApiKey/getApiKey/setApiKey/clearApiKey) puede respaldarse
-// en él en vez de en una variable de módulo — main.js y cuboCardProvider
-// no tendrían que cambiar, solo este archivo.
+// Antes vivía solo en una variable de módulo en memoria (se perdía al
+// recargar la página) — por instrucción explícita de "quitar la opción de
+// insertar la API key cada sesión" al pasar a producción, ahora persiste,
+// para que baste con configurarla una sola vez desde Admin.
 
-let apiKey = null;
+import { createKeyValueStore } from '../../machineConfig/machineConfigStore.js';
+
+const STORAGE_KEY = 'freshtouch.secret.cuboApiKey';
+const store = createKeyValueStore();
 
 function setApiKey(value) {
-  apiKey = value && value.length > 0 ? value : null;
+  if (value && value.length > 0) store.set(STORAGE_KEY, value);
+  else store.remove(STORAGE_KEY);
 }
 
 function getApiKey() {
-  return apiKey;
+  return store.get(STORAGE_KEY);
 }
 
 function hasApiKey() {
-  return apiKey !== null;
+  return getApiKey() !== null;
 }
 
 function clearApiKey() {
-  apiKey = null;
+  store.remove(STORAGE_KEY);
 }
 
 export { setApiKey, getApiKey, hasApiKey, clearApiKey };

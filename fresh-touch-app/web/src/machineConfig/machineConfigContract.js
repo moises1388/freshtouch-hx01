@@ -13,8 +13,8 @@ const REQUIRED_FIELDS = Object.freeze([
   'machineId', 'machineName', 'ownerId', 'tenantId', 'location',
   'esp32Id', 'esp32Address',
   'prices', // { basic: number, premium: number }
-  'paymentProvider', // 'mock' | 'cubo' (Fase 5 agrega 'cubo' de verdad)
-  'cuboEnvironment', // 'sandbox' | 'production' — NUNCA junto a un secreto en este objeto
+  'paymentProvider', // 'cubo' — único valor soportado en producción
+  'cuboEnvironment', // 'production' — único valor soportado; NUNCA junto a un secreto en este objeto
   'cuboPosId',
   'cuboPosSerial',
 ]);

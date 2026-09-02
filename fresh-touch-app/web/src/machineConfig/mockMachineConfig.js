@@ -11,10 +11,11 @@ const MOCK_HX02_CONFIG = Object.freeze({
   tenantId: 'MOCK-TENANT-HX02',
   location: 'MOCK — pendiente de confirmar con el propietario',
   esp32Id: 'MOCK-ESP32-HX02',
-  esp32Address: '0.0.0.0', // MOCK — nunca se usa para conectar nada real en Fase 1
+  esp32Address: '0.0.0.0', // placeholder — se reemplaza desde Admin con la IP real del ESP32
+  esp32Mode: 'real', // producción: sin opción de "activar" modo real, siempre lo es
   prices: { basic: 20, premium: 30 },
-  paymentProvider: 'mock',
-  cuboEnvironment: 'sandbox',
+  paymentProvider: 'cubo',
+  cuboEnvironment: 'production',
   cuboPosId: 'MOCK-POS-ID',
   cuboPosSerial: 'MOCK-POS-SERIAL',
 });

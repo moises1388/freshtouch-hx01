@@ -55,14 +55,23 @@ test('esp32Address vacío es inválido', () => {
   assert.ok(errors.esp32Address);
 });
 
-test('cuboPosId/cuboPosSerial vacíos son inválidos SOLO cuando paymentProvider es "cubo"', () => {
-  const conMock = validateDraft(validDraft({ paymentProvider: 'mock', cuboPosId: '', cuboPosSerial: '' }));
-  assert.equal(conMock.valid, true, 'con paymentProvider mock, POS ID/Serial vacíos no deben bloquear el guardado');
-
+test('cuboPosId/cuboPosSerial vacíos son inválidos (paymentProvider siempre es "cubo" en producción)', () => {
   const conCubo = validateDraft(validDraft({ paymentProvider: 'cubo', cuboPosId: '', cuboPosSerial: '' }));
   assert.equal(conCubo.valid, false);
   assert.ok(conCubo.errors.cuboPosId);
   assert.ok(conCubo.errors.cuboPosSerial);
+});
+
+test('paymentProvider "mock" ya no es válido — producción exige "cubo"', () => {
+  const { valid, errors } = validateDraft(validDraft({ paymentProvider: 'mock' }));
+  assert.equal(valid, false);
+  assert.ok(errors.paymentProvider);
+});
+
+test('cuboEnvironment "sandbox" ya no es válido — producción exige "production"', () => {
+  const { valid, errors } = validateDraft(validDraft({ cuboEnvironment: 'sandbox' }));
+  assert.equal(valid, false);
+  assert.ok(errors.cuboEnvironment);
 });
 
 test('cuboPosId/cuboPosSerial no vacíos con paymentProvider "cubo" son válidos, sin inventar un formato específico de Cubo', () => {
