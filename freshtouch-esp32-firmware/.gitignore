@@ -1,0 +1,5 @@
+.pio/
+.vscode/
+config/secrets.local.h
+*.local.h
+*.local.json

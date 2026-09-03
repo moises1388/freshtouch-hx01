@@ -1,0 +1,15 @@
+{
+  "_comment": "Plantilla — copiar y completar por máquina. NUNCA agregar API keys, tokens ni ningún secreto aquí (ver MACHINE-CONFIG.md). Mismo esquema que valida machineConfigContract.js.",
+  "machineId": "HX03",
+  "machineName": "FreshTouch HX03",
+  "ownerId": "PENDIENTE",
+  "tenantId": "PENDIENTE",
+  "location": "PENDIENTE — confirmar con el propietario",
+  "esp32Id": "PENDIENTE",
+  "esp32Address": "PENDIENTE",
+  "prices": { "basic": 20, "premium": 35 },
+  "paymentProvider": "mock",
+  "cuboEnvironment": "sandbox",
+  "cuboPosId": "PENDIENTE",
+  "cuboPosSerial": "PENDIENTE"
+}

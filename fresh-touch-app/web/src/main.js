@@ -1,0 +1,1469 @@
+// Punto de entrada de FreshTouch App (Fase 1, corrección de fidelidad
+// visual). Reproduce el comportamiento real de app.js de HX01 —mismos
+// nombres de función globales invocados desde el marcado portado
+// (go, selectPlan, openQR, sessAction, pinTap, etc.)— pero implementado
+// sobre la arquitectura modular: cada función que en HX01 tocaba
+// hardware/Cubo/Make reales aquí llama a un mock explícito
+// (payment/esp32/nativeBridge), nunca a una integración real.
+//
+// operationState sigue siendo real y se sigue probando por separado
+// (operationState/operationStateMachine.test.js) — aquí se usa como
+// registro de los checkpoints de la sesión (servicio elegido, pago
+// aprobado, puerta abierta, ciclo iniciado/terminado), no como el que
+// decide qué pantalla mostrar (ver navigation.js para el porqué de ese
+// cambio).
+
+import { createOperationSession } from './operationState/operationStateMachine.js';
+import { createMockPaymentProvider } from './payment/mockPaymentProvider.js';
+import { createCuboCardProvider } from './payment/cuboCardProvider.js';
+import { STATES as CUBO_STATES } from './payment/paymentStateMachine.js';
+import { CUBO_EVENTS } from './payment/cubo/cuboEvents.js';
+import { setApiKey, getApiKey, hasApiKey, clearApiKey } from './payment/cubo/apiKeySession.js';
+import {
+  getMakeWebhookConfig,
+  saveMakeWebhookConfig,
+  hasMakeWebhookConfig,
+  clearMakeWebhookConfig,
+} from './payment/makeWebhookConfig.js';
+import { createMockEsp32Controller } from './esp32/mockEsp32Controller.js';
+import { createRealEsp32Adapter } from './esp32/realEsp32Adapter.js';
+import { assertCanStartCycle } from './esp32/cycleSafety.js';
+import { createMockNativeBridge } from './nativeBridge/mockNativeBridge.js';
+import { createAdminSession } from './admin/adminSession.js';
+import { loadMockMachineConfig } from './machineConfig/mockMachineConfig.js';
+import { assertValidMachineConfig } from './machineConfig/machineConfigContract.js';
+import { createMachineConfigStore } from './machineConfig/machineConfigStore.js';
+import { validateDraft } from './machineConfig/provisioningValidation.js';
+import { showScreen } from './ui/navigation.js';
+import { initBubbles } from './ui/bubbles.js';
+import { t, applyLang } from './ui/i18n.js';
+
+// --- Composición de la app ---
+// Fase 2: si la máquina ya fue configurada (provisioning, ver más abajo),
+// se usa esa configuración guardada; si no, se sigue arrancando con el
+// mock de Fase 1 — nunca se auto-guarda el mock, así "isProvisioned()"
+// solo es true después de un Guardar explícito desde el panel de admin.
+// Override temporal de esp32Mode/esp32Address vía query string —
+// ?esp32Mode=real&esp32Address=172.20.10.10 — para poder probar contra el
+// ESP32 real desde cualquier navegador (incluida una tablet) sin editar
+// código ni tocar lo que ya esté provisionado. Nunca se persiste (no
+// llama a configStore.save()): vive solo en memoria mientras esta pestaña
+// tenga esos parámetros en la URL. En producción ya no existe un modo
+// "mock" que activar — el único valor de esp32Mode que este override
+// acepta es "real" (ej. para apuntar rápido a una IP nueva sin pasar por
+// Admin); cualquier otro valor se ignora.
+function applyUrlConfigOverrides(config) {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('esp32Mode');
+  const address = params.get('esp32Address');
+  const overrides = {};
+  if (mode === 'real') overrides.esp32Mode = mode;
+  if (address) overrides.esp32Address = address;
+  return Object.keys(overrides).length > 0 ? { ...config, ...overrides } : config;
+}
+
+const configStore = createMachineConfigStore();
+let machineConfig = applyUrlConfigOverrides(configStore.load() || loadMockMachineConfig());
+assertValidMachineConfig(machineConfig);
+
+// Selección de controlador ESP32 — Etapa 1 (smoke test de transporte
+// real). Explícita y fail-closed: machineConfig.esp32Mode='real' es la
+// ÚNICA forma de obtener el adaptador real; cualquier otro valor (o su
+// ausencia, como en loadMockMachineConfig()) usa el mock. Si alguien
+// pide 'real' sin los datos que createRealEsp32Adapter ya exige
+// (esp32Id/esp32Address), esto falla fuerte aquí mismo — nunca cae al
+// mock en silencio.
+function resolveEsp32Controller(config) {
+  if (config.esp32Mode === 'real') return createRealEsp32Adapter({ machineConfig: config });
+  if (config.esp32Mode === undefined || config.esp32Mode === 'mock') return createMockEsp32Controller();
+  throw new Error(`[FreshTouch] machineConfig.esp32Mode desconocido: "${config.esp32Mode}" (debe ser "mock" o "real").`);
+}
+
+const operation = createOperationSession();
+const payment = createMockPaymentProvider({ simulatedDelayMs: 0 });
+const esp32 = resolveEsp32Controller(machineConfig);
+const nativeBridge = createMockNativeBridge();
+const admin = createAdminSession({ nativeBridge });
+
+// Pago real con Cubo QPOS Cute (tarjeta) — a diferencia de `payment`
+// arriba (mock, usado por QR/código de caja/promoción, sin tocar), este
+// SÍ habla con hardware real. No se construye aquí de una vez: mode
+// 'web-sdk' exige que window.CuboPagoSDK ya exista (el <script> de
+// index.html) y que haya una API key de sesión (ver
+// payment/cubo/apiKeySession.js) — ninguna de las dos está garantizada al
+// cargar la página. Se construye perezosamente en getCuboPayment(), la
+// primera vez que alguien intenta pagar con POS.
+let cuboPayment = null;
+
+function getCuboPayment() {
+  if (!cuboPayment) {
+    cuboPayment = createCuboCardProvider({ mode: 'web-sdk', machineConfig, apiKey: getApiKey() });
+    cuboPayment.onResult(renderPosScreen);
+  }
+  return cuboPayment;
+}
+
+// Se llama cuando cambia la API key de sesión (ver renderAdminBody): el
+// proveedor viejo, si existe, queda descartado — la próxima vez que
+// alguien pague con POS, getCuboPayment() construye uno nuevo con la
+// clave nueva. No se reutiliza el proveedor viejo con una clave distinta.
+function resetCuboPayment() {
+  cuboPayment = null;
+}
+
+// --- Estado local de la sesión de UI — mismas variables que STATE en app.js de HX01 ---
+const STATE = {
+  plan: null,
+  sessStep: 1,
+  codeType: null,
+  codeInput: '',
+  pinInput: '',
+  admTaps: 0,
+  admTimer: null,
+  role: null,
+  doorOpen: false,
+  provisioningErrors: {},
+  provisioningDraft: null,
+};
+
+let toastTmr = null;
+let qrTimerInterval = null;
+let qrTimerSecs = 300; // se reasigna a QR_TIMEOUT_SECONDS en startQRTimer()
+let qrPollInterval = null;
+let qrPollTO = null;
+let qrBtnTO = null;
+let cycTimer = null;
+let extraTimer = null;
+let doneTimer = null;
+let cyPhIdx = 0;
+let cySecs = 0;
+let cyDur = 0;
+let cyCurPh = null;
+
+function currentPrice() {
+  return STATE.plan === 'basic' ? machineConfig.prices.basic : machineConfig.prices.premium;
+}
+
+// Fases del ciclo y precalentamiento — reproducen EXACTAMENTE la
+// secuencia real de HX01 (app.js, rama main), confirmada leyendo el
+// código, no recordada de memoria:
+//
+//   1. Puerta abre (sessAction paso 1).
+//   2. Cliente coloca casco, confirma (paso 2) -> startVaporCountdown():
+//      vapor ON + UV ON INMEDIATAMENTE, puerta se queda abierta, cuenta
+//      regresiva visible de CFG.durPreheat (15s real de HX01, no 5s).
+//   3. Al llegar a 0 -> arranca el ciclo cronometrado (runPhase()):
+//      fase 1 (vapor): vapor ON otra vez (ya estaba) + AHORA SÍ se
+//      asegura la puerta (doorSecureOnStart, solo en la fase 1).
+//   4. fase 2 (secado): sin cambios de puerta/UV.
+//   5. fase 3 (antes "aroma", ahora "Desinfección UV"): comp: null — no
+//      dispara relé propio, UV ya está encendida desde el paso 2; se
+//      apaga al terminar esta fase (ver cycleDone()).
+//
+// Duración del precalentamiento tomada literalmente de HX01 real
+// (CFG.durPreheat). Duración de vapor (30s) y patrón de secado (pulsos
+// ajustados por instrucción explícita — ya no son las de HX01 (esta
+// máquina real necesita 15s para que el vaporizador arranque). Secado
+// vuelve a ser un solo tramo continuo de 2min (sin pausa) tras cambiar
+// la secadora física; vapor ahora se diferencia por plan (básico 30s,
+// premium 45s, secadora más potente en premium).
+const PREHEAT_SECONDS = 15; // CFG.durPreheat real de HX01
+// QR Cubo vía Make — mismos valores por defecto que CFG.qrTimeoutSec /
+// CFG.qrPollDelaySec / CFG.qrPollIntervalSec en HX01 real.
+const QR_TIMEOUT_SECONDS = 300;
+const QR_POLL_DELAY_SECONDS = 60;
+const QR_POLL_INTERVAL_SECONDS = 5;
+// Buffer entre fases: 1-2s para que los relays no queden encendidos al
+// mismo tiempo al pasar de un componente a otro (ej. vapor -> secado).
+const PHASE_TRANSITION_MS = 1500;
+const VAPOR_SECONDS_BASIC = 30;
+const VAPOR_SECONDS_PREMIUM = 45;
+const DRY_SECONDS = 120;
+
+const CYCLES = {
+  basic: [
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1b', dur: VAPOR_SECONDS_BASIC, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2b', dur: DRY_SECONDS, comp: 'secado' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3b', dur: 3, comp: null },
+  ],
+  premium: [
+    { nm: 'cyc_v', ico: '💧', lbl: 'p1p', dur: VAPOR_SECONDS_PREMIUM, comp: 'vapor', doorSecureOnStart: true },
+    { nm: 'cyc_d', ico: '💨', lbl: 'p2p', dur: DRY_SECONDS, comp: 'secado' },
+    { nm: 'cyc_a', ico: '🔆', lbl: 'p3p', dur: 3, comp: null },
+  ],
+};
+
+// --- toast — mismo comportamiento que app.js de HX01 (línea 965) ---
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `toast on ${type || 'in'}`;
+  clearTimeout(toastTmr);
+  toastTmr = setTimeout(() => el.classList.remove('on'), 3000);
+}
+
+// --- Navegación ---
+function go(id) {
+  if (id === 's-idle') {
+    clearInterval(cycTimer);
+    clearInterval(extraTimer);
+    clearInterval(doneTimer);
+    clearInterval(qrTimerInterval);
+    clearTimeout(qrPollTO);
+  }
+  showScreen(id);
+}
+
+// --- Admin: entrada oculta (mismo patrón que admTap() de HX01) ---
+function admTap() {
+  STATE.admTaps++;
+  clearTimeout(STATE.admTimer);
+  if (STATE.admTaps >= 3) {
+    STATE.admTaps = 0;
+    openPIN();
+  } else {
+    STATE.admTimer = setTimeout(() => { STATE.admTaps = 0; }, 1500);
+  }
+}
+
+function openPIN() {
+  STATE.pinInput = '';
+  updatePinDots();
+  document.getElementById('pin-err').textContent = '';
+  document.getElementById('pin-ov').classList.add('on');
+}
+
+function closePIN() {
+  document.getElementById('pin-ov').classList.remove('on');
+  STATE.pinInput = '';
+}
+
+function pinTap(k) {
+  if (k === 'DEL') STATE.pinInput = STATE.pinInput.slice(0, -1);
+  else if (STATE.pinInput.length < 6) STATE.pinInput += k;
+  updatePinDots();
+}
+
+function updatePinDots() {
+  document.querySelectorAll('.pin-dot').forEach((d, i) => d.classList.toggle('on', i < STATE.pinInput.length));
+}
+
+async function checkPIN() {
+  const ok = await admin.authenticate(STATE.pinInput);
+  if (ok) {
+    STATE.role = admin.getRole(); // 'sa'|'ow'|'tc'|'tn' — ver admin/mockAdminAuth.js
+    closePIN();
+    renderAdminBody();
+    go('s-admin');
+  } else {
+    document.getElementById('pin-err').textContent = 'PIN incorrecto';
+    setTimeout(() => {
+      STATE.pinInput = '';
+      updatePinDots();
+      document.getElementById('pin-err').textContent = '';
+    }, 900);
+  }
+}
+
+function exitAdmin() {
+  admin.logout();
+  STATE.role = null;
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
+  go('s-idle');
+}
+
+// Gating por rol — réplica del patrón real de HX01 (app.js renderAdmin(),
+// líneas 810-894): Settings (aquí, Provisioning) es exclusivo de 'sa'.
+// 'ow' puede ver la identidad de la máquina (igual que ve Stats/Codes/
+// Contacts en HX01 real) pero no editarla. 'tc'/'tn' solo ven
+// Diagnóstico — HX01 real les da además el botón de puerta y, a 'tc',
+// el de emergencia; esos widgets no existen todavía en esta arquitectura
+// modular (no hay sesión activa que abrir desde el panel de admin en
+// Fase 1-2) y quedan pendientes para cuando haya un caso de uso real que
+// los necesite, no se inventan aquí solo por paridad visual.
+const ROLE_LABEL_KEY = { sa: 'r_sa', ow: 'r_ow', tc: 'r_tc', tn: 'r_tn' };
+const ROLE_BADGE_CLASS = { sa: 'r-sa', ow: 'r-ow', tc: 'r-tc', tn: 'r-tn' };
+
+async function renderAdminBody() {
+  const role = STATE.role;
+  const l = t();
+  const diag = await nativeBridge.getDiagnostics();
+  const body = document.getElementById('adm-body');
+  const midEl = document.getElementById('adm-mid');
+  if (midEl) midEl.textContent = `Máquina ${machineConfig.machineId}`;
+
+  const badgeEl = document.getElementById('role-bdg');
+  if (badgeEl) {
+    badgeEl.className = `role-bdg ${ROLE_BADGE_CLASS[role] || 'r-sa'}`;
+    // Antes decía siempre "MOCK" a secas (arrastrado de Fase 1, cuando
+    // todo era mock siempre) — ya no es cierto desde que existe el modo
+    // real de ESP32 (Etapa 1). Refleja machineConfig.esp32Mode de verdad,
+    // para poder confirmar desde la propia tablet, sin DevTools, si se
+    // está hablando con el ESP32 real o con el mock.
+    const esp32ModeLabel = machineConfig.esp32Mode === 'real' ? 'ESP32: REAL' : 'ESP32: MOCK';
+    badgeEl.innerHTML = `${l[ROLE_LABEL_KEY[role]] || ''} <span class="mock-badge">${esp32ModeLabel}</span>`;
+  }
+
+  const diagRows = Object.entries(diag)
+    .filter(([k]) => k !== 'mock')
+    .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v diag-mock">${v}</span></div>`)
+    .join('');
+
+  const canViewIdentity = role === 'sa' || role === 'ow';
+  const canProvision = role === 'sa';
+  // Reset manual de sesión/operationState — ya no hace falta para
+  // "destrabar" un fallo de ESP32 (el ciclo ya no se congela con eso, ver
+  // logCycleWarning() en main.js), pero se deja disponible como
+  // herramienta general de Admin por si operationState queda en un
+  // estado inesperado por otra razón. Exclusiva de Admin, nunca visible
+  // ni accesible desde pantalla de cliente.
+  const canResetCycle = role === 'sa' || role === 'tc';
+
+  let html = '';
+
+  if (canViewIdentity) {
+    const configRows = Object.entries(machineConfig)
+      .map(([k, v]) => `<div class="admin-panel-row"><span class="k">${k}</span><span class="v">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
+      .join('');
+    html += `<div class="admin-panel-section"><h3>Identidad de máquina</h3>${configRows}</div>`;
+  }
+
+  html += `<div class="admin-panel-section"><h3>Diagnóstico</h3>${diagRows}</div>`;
+
+  if (canResetCycle) {
+    html += `<div class="admin-panel-section"><h3>Recuperación</h3>
+      <button onclick="window.__ftaResetStuckCycle()">Reiniciar ciclo atascado</button>
+    </div>`;
+  }
+
+  if (canProvision) {
+    html += renderProvisioningSection();
+    html += `<div class="admin-panel-section"><h3>Exportar / Reset</h3>
+      <button onclick="window.__ftaExportConfig()">Exportar configuración (sin secretos)</button>
+      <button onclick="window.__ftaResetMachine()">Reset de máquina (mock)</button>
+    </div>`;
+  } else {
+    html += `<div class="admin-panel-section"><h3>Provisioning — Configuración de máquina</h3>
+      <div class="prov-status diag-mock">${l.prov_locked}</div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+// --- Provisioning (Fase 2) ---
+// Formulario dentro del panel de admin — nunca se renderiza fuera de
+// #adm-body, y #adm-body nunca tiene contenido en index.html (solo se
+// llena vía renderAdminBody(), que solo se invoca después de un PIN
+// correcto en checkPIN()). El cliente normal jamás ve este formulario.
+function renderProvisioningSection() {
+  // Si el último intento de guardar falló la validación, se sigue
+  // mostrando lo que la persona escribió (STATE.provisioningDraft), no la
+  // config vieja — si no, el error aparecería junto a un campo que ya no
+  // muestra el valor inválido que lo causó, muy confuso. Con guardado
+  // exitoso o al abrir el panel por primera vez, provisioningDraft es
+  // null y se muestra machineConfig (la config activa real).
+  const c = STATE.provisioningDraft || machineConfig;
+  const provisioned = configStore.isProvisioned();
+  const errors = STATE.provisioningErrors || {};
+  const esc = (v) => String(v ?? '').replace(/"/g, '&quot;');
+  // errorKey usa las mismas claves que devuelve provisioningValidation.js
+  // (machineId, esp32Address, "prices.basic", ...) — deliberadamente
+  // distintas del id del <input> (prov-machineId, etc.) para no acoplar
+  // el esquema de validación a los ids del DOM.
+  const errFor = (errorKey) => (errors[errorKey] ? `<div class="prov-err">${errors[errorKey]}</div>` : '');
+  const field = (id, label, value, errorKey, opts = {}) => `
+    <div class="prov-field">
+      <label class="prov-lbl" for="${id}">${label}</label>
+      <input class="prov-inp" id="${id}" type="${opts.type || 'text'}" value="${esc(value)}">
+      ${errFor(errorKey)}
+    </div>`;
+  const select = (id, label, value, errorKey, options) => `
+    <div class="prov-field">
+      <label class="prov-lbl" for="${id}">${label}</label>
+      <select class="prov-inp" id="${id}">
+        ${options.map((o) => `<option value="${o}" ${o === value ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>
+      ${errFor(errorKey)}
+    </div>`;
+
+  return `
+    <div class="admin-panel-section">
+      <h3>Provisioning — Configuración de máquina</h3>
+      <div class="prov-status ${provisioned ? 'diag-ok' : 'diag-mock'}">
+        ${provisioned ? '✅ Máquina configurada y guardada' : '⚠️ Sin configuración guardada — mostrando valores mock (Fase 1)'}
+      </div>
+
+      <div class="prov-group-title">Identidad</div>
+      ${field('prov-machineId', 'Machine ID', c.machineId, 'machineId')}
+      ${field('prov-machineName', 'Nombre de máquina', c.machineName, 'machineName')}
+      ${field('prov-ownerId', 'Owner ID', c.ownerId, 'ownerId')}
+      ${field('prov-tenantId', 'Tenant ID', c.tenantId, 'tenantId')}
+      ${field('prov-location', 'Ubicación', c.location, 'location')}
+
+      <div class="prov-group-title">ESP32</div>
+      ${field('prov-esp32Id', 'ESP32 ID', c.esp32Id, 'esp32Id')}
+      ${field('prov-esp32Address', 'ESP32 dirección/IP', c.esp32Address, 'esp32Address')}
+
+      <div class="prov-group-title">Precios</div>
+      ${field('prov-priceBasic', 'Precio Básico', c.prices.basic, 'prices.basic', { type: 'number' })}
+      ${field('prov-pricePremium', 'Precio Premium', c.prices.premium, 'prices.premium', { type: 'number' })}
+
+      <div class="prov-group-title">Pago</div>
+      <div class="admin-panel-row"><span class="k">Proveedor de pago</span><span class="v diag-ok">Cubo (producción)</span></div>
+      <div class="admin-panel-row"><span class="k">Cubo environment</span><span class="v diag-ok">production</span></div>
+      ${field('prov-cuboPosId', 'Cubo POS ID', c.cuboPosId, 'cuboPosId')}
+      ${field('prov-cuboPosSerial', 'Cubo POS Serial', c.cuboPosSerial, 'cuboPosSerial')}
+
+      <div class="prov-group-title">Secretos (guardados solo en este navegador — nunca en GitHub)</div>
+      <div class="admin-panel-row">
+        <span class="k">Cubo API Key</span>
+        <span class="v ${hasApiKey() ? 'diag-ok' : 'diag-bad'}">${hasApiKey() ? 'configurada' : 'no configurada'}</span>
+      </div>
+      <div class="admin-panel-row">
+        <span class="k">Webhooks de Make</span>
+        <span class="v ${hasMakeWebhookConfig() ? 'diag-ok' : 'diag-bad'}">${hasMakeWebhookConfig() ? 'configurados' : 'no configurados'}</span>
+      </div>
+      <div class="mock-controls">
+        <span class="mock-controls-label">Se guardan en este navegador y quedan configurados hasta que los borres — no hace falta volver a escribirlos en cada sesión. Un campo en blanco al guardar deja el valor ya guardado tal como está, no lo borra.</span>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-cuboApiKey">Cubo API Key</label>
+          <input class="prov-inp" id="prov-cuboApiKey" type="password" placeholder="${hasApiKey() ? '••••••••' : 'Sin configurar'}">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-salesWebhookUrl">Make — Webhook Ventas</label>
+          <input class="prov-inp" id="prov-salesWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-qrWebhookUrl">Make — Webhook Cubo (genera QR)</label>
+          <input class="prov-inp" id="prov-qrWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-qrPollWebhookUrl">Make — Webhook Poll (verifica pago)</label>
+          <input class="prov-inp" id="prov-qrPollWebhookUrl" type="password" placeholder="https://hook.us2.make.com/...">
+        </div>
+        <div class="prov-field">
+          <label class="prov-lbl" for="prov-webhookSecret">Make — Token (x-freshtouch-token)</label>
+          <input class="prov-inp" id="prov-webhookSecret" type="password" placeholder="${hasMakeWebhookConfig() ? '••••••••' : 'Sin configurar'}">
+        </div>
+        <button onclick="window.__ftaSaveSecrets()">Guardar secretos</button>
+        <button onclick="window.__ftaClearSecrets()">Borrar todos los secretos</button>
+      </div>
+
+      <div class="prov-actions">
+        <button class="prov-save" onclick="window.__ftaSaveProvisioning()">Guardar configuración</button>
+        <button class="prov-restore" onclick="window.__ftaRestoreProvisioning()">Restaurar a mock</button>
+      </div>
+    </div>`;
+}
+
+function readProvisioningDraft() {
+  const val = (id) => document.getElementById(id).value.trim();
+  return {
+    machineId: val('prov-machineId'),
+    machineName: val('prov-machineName'),
+    ownerId: val('prov-ownerId'),
+    tenantId: val('prov-tenantId'),
+    location: val('prov-location'),
+    esp32Id: val('prov-esp32Id'),
+    esp32Address: val('prov-esp32Address'),
+    prices: {
+      basic: Number(val('prov-priceBasic')),
+      premium: Number(val('prov-pricePremium')),
+    },
+    // Ya no son campos editables — producción solo soporta Cubo/production
+    // (ver provisioningValidation.js).
+    paymentProvider: 'cubo',
+    cuboEnvironment: 'production',
+    cuboPosId: val('prov-cuboPosId'),
+    cuboPosSerial: val('prov-cuboPosSerial'),
+  };
+}
+
+async function saveProvisioning() {
+  const draft = readProvisioningDraft();
+  const { valid, errors } = validateDraft(draft);
+  if (!valid) {
+    STATE.provisioningErrors = errors;
+    STATE.provisioningDraft = draft; // conserva lo escrito para que la persona pueda corregirlo, no lo pierde
+    await renderAdminBody();
+    toast('Revisa los campos marcados en rojo', 'er');
+    return;
+  }
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
+  machineConfig = configStore.save(draft);
+  applyLang(machineConfig.prices);
+  await renderAdminBody();
+  toast('Configuración guardada', 'ok');
+}
+
+async function restoreProvisioning() {
+  configStore.reset();
+  machineConfig = loadMockMachineConfig();
+  STATE.provisioningErrors = {};
+  STATE.provisioningDraft = null;
+  applyLang(machineConfig.prices);
+  await renderAdminBody();
+  toast('Restaurado a configuración mock', 'in');
+}
+
+// Guarda de una vez el secreto de Cubo y los 4 valores de Make (webhooks +
+// token) — cada campo en blanco deja el valor ya guardado tal como está
+// (ver saveMakeWebhookConfig()), así que reguardar solo uno no borra los
+// demás. Persisten en el navegador (ver apiKeySession.js/
+// makeWebhookConfig.js) — nunca en machineConfig ni en este repo.
+async function saveSecrets() {
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const cuboApiKey = val('prov-cuboApiKey');
+  if (cuboApiKey) {
+    setApiKey(cuboApiKey);
+    resetCuboPayment(); // fuerza reconstruir el proveedor con la clave nueva
+  }
+  const patch = {};
+  const salesWebhookUrl = val('prov-salesWebhookUrl');
+  const qrWebhookUrl = val('prov-qrWebhookUrl');
+  const qrPollWebhookUrl = val('prov-qrPollWebhookUrl');
+  const webhookSecret = val('prov-webhookSecret');
+  if (salesWebhookUrl) patch.salesWebhookUrl = salesWebhookUrl;
+  if (qrWebhookUrl) patch.qrWebhookUrl = qrWebhookUrl;
+  if (qrPollWebhookUrl) patch.qrPollWebhookUrl = qrPollWebhookUrl;
+  if (webhookSecret) patch.webhookSecret = webhookSecret;
+  if (Object.keys(patch).length > 0) saveMakeWebhookConfig(patch);
+  await renderAdminBody();
+  toast('Secretos guardados en este navegador', 'ok');
+}
+
+async function clearSecrets() {
+  clearApiKey();
+  clearMakeWebhookConfig();
+  resetCuboPayment();
+  await renderAdminBody();
+  toast('Secretos borrados de este navegador', 'in');
+}
+
+function exportConfig() {
+  const json = JSON.stringify(machineConfig, null, 2);
+  console.log('[export mock — Fase 1 no descarga archivos, solo lo muestra en consola]', json);
+  alert('Configuración exportada a la consola del navegador (Fase 1, sin descarga de archivo todavía).');
+}
+
+function resetMachine() {
+  const confirmation = prompt(`Escribe "${machineConfig.machineId}" para confirmar el reset (mock — no borra nada real todavía):`);
+  if (confirmation === machineConfig.machineId) {
+    alert('Reset (mock) confirmado. En una implementación real, esto dejaría la instalación en estado UNCONFIGURED.');
+  }
+}
+
+// --- Plan / selección de servicio ---
+function selectPlan(plan) {
+  STATE.plan = plan;
+  operation.send('SELECT_SERVICE');
+  const price = currentPrice();
+  const label = plan === 'basic' ? t().basic_name : t().premium_name;
+  document.getElementById('pay-plan-lbl').textContent = `${label} — Q${price}`;
+  document.getElementById('qr-amt-lbl').textContent = `Q${price}.00`;
+  document.getElementById('qr-amt-big').textContent = `Q${price}.00`;
+  go('s-payment');
+}
+
+// --- QR Cubo vía Make (producción) ---
+// Puerto literal del flujo real de HX01 (app.js, rama main): openQR()
+// pide un link de pago a qrWebhookUrl, lo muestra como QR (mismo
+// servicio api.qrserver.com que usa HX01 real), y startQRPoll() consulta
+// qrPollWebhookUrl cada QR_POLL_INTERVAL_SECONDS hasta ver confirmado. El
+// botón "Confirmar pago manualmente" queda oculto (hideQRManualBtn) hasta
+// armQRManualBtn() lo muestra a los 60s, como respaldo si el poll falla.
+function openQR() {
+  const price = currentPrice();
+  document.getElementById('qr-amt-lbl').textContent = `Q${price}.00`;
+  document.getElementById('qr-amt-big').textContent = `Q${price}.00`;
+  document.getElementById('qr-img').src =
+    'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="%23f0f0f0" rx="12"/><text x="110" y="115" text-anchor="middle" font-size="14" fill="%23888">Generando...</text></svg>';
+  STATE.qrSince = Math.floor(Date.now() / 1000);
+  hideQRManualBtn();
+  startQRTimer();
+  go('s-qr');
+  operation.send('REQUEST_PAYMENT');
+  payment.selectService({ label: STATE.plan, amount: price });
+  requestCuboQrLink(price);
+}
+
+async function requestCuboQrLink(price) {
+  const cfg = getMakeWebhookConfig();
+  if (!cfg.qrWebhookUrl) {
+    toast('Pago con QR no configurado — falta el webhook de Make en Admin.', 'er');
+    stopQR();
+    go('s-payment');
+    return;
+  }
+  try {
+    const resp = await fetch(cfg.qrWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-freshtouch-token': cfg.webhookSecret || '' },
+      body: JSON.stringify({ maquina: machineConfig.machineId, monto: price }),
+    });
+    const data = await resp.json();
+    if (data.paymentUrl) {
+      document.getElementById('qr-img').src =
+        `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.paymentUrl)}`;
+      startQRPoll();
+      armQRManualBtn();
+    } else {
+      toast('Error al generar link de pago', 'er');
+      stopQR();
+      go('s-payment');
+    }
+  } catch (err) {
+    console.error('[FreshTouch] requestCuboQrLink() falló:', err);
+    toast('Error de conexión con servidor de pago', 'er');
+    stopQR();
+    go('s-payment');
+  }
+}
+
+function startQRPoll() {
+  clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
+  const doPoll = async () => {
+    try {
+      const cfg = getMakeWebhookConfig();
+      const price = currentPrice();
+      const url = `${cfg.qrPollWebhookUrl}?maquina=${encodeURIComponent(machineConfig.machineId)}&monto=${price}&desde=${STATE.qrSince}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (data.confirmado === true || data.confirmado === 'true' || data.confirmado === 'confirmado') {
+        stopQR();
+        qrManualConfirm();
+      }
+    } catch (err) {
+      // Ignorar errores de polling — igual que HX01 real, el botón manual
+      // sigue como respaldo si esto nunca confirma.
+    }
+  };
+  qrPollTO = setTimeout(() => {
+    doPoll();
+    qrPollInterval = setInterval(doPoll, QR_POLL_INTERVAL_SECONDS * 1000);
+  }, QR_POLL_DELAY_SECONDS * 1000);
+}
+
+function hideQRManualBtn() {
+  clearTimeout(qrBtnTO);
+  qrBtnTO = null;
+  document.getElementById('tqr-btn').style.display = 'none';
+}
+
+function armQRManualBtn() {
+  clearTimeout(qrBtnTO);
+  qrBtnTO = setTimeout(() => {
+    document.getElementById('tqr-btn').style.display = '';
+  }, 60000);
+}
+
+function startQRTimer() {
+  clearInterval(qrTimerInterval);
+  qrTimerSecs = QR_TIMEOUT_SECONDS;
+  updateQRTimer();
+  qrTimerInterval = setInterval(() => {
+    qrTimerSecs--;
+    updateQRTimer();
+    if (qrTimerSecs <= 0) {
+      stopQR();
+      toast(t().tk.qr_exp, 'er');
+      go('s-payment');
+    }
+  }, 1000);
+}
+
+function updateQRTimer() {
+  const m = Math.floor(qrTimerSecs / 60), s = qrTimerSecs % 60;
+  document.getElementById('qr-timer').textContent = `⏱ ${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function stopQR() {
+  clearInterval(qrTimerInterval);
+  clearInterval(qrPollInterval);
+  clearTimeout(qrPollTO);
+  hideQRManualBtn();
+}
+
+function cancelQR() {
+  stopQR();
+  operation.send('CANCEL');
+  go('s-payment');
+}
+
+async function qrManualConfirm() {
+  stopQR();
+  const amt = currentPrice();
+  registrarVenta(amt, 'QR-CUBO'); // disparar-y-olvidar, igual que HX01 real
+  await payment.connectPos();
+  await payment.createPayment({ outcome: 'SUCCESS' });
+  toast(t().tk.qr_ok, 'ok');
+  if (payment.canStartCycle()) operation.send('PAYMENT_APPROVED');
+  setTimeout(activateSess, 600);
+}
+
+// Reporta una venta a Make (Google Sheet + Telegram de HX01) — no
+// crítico: si falla, solo se registra en consola, nunca bloquea el flujo
+// del cliente. Mismo webhook/forma exacta que registrarVenta() en HX01
+// real (app.js, rama main), machineId siempre HX02 (nunca se mezcla con
+// HX01 en el mismo registro).
+async function registrarVenta(monto, metodoPago, codigoUsado = '') {
+  const cfg = getMakeWebhookConfig();
+  if (!cfg.salesWebhookUrl) {
+    console.warn('[FreshTouch] registrarVenta(): salesWebhookUrl no configurado — venta no reportada.');
+    return;
+  }
+  try {
+    await fetch(cfg.salesWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'registrar_venta',
+        maquina: machineConfig.machineId,
+        monto,
+        plan: STATE.plan,
+        metodo_pago: metodoPago,
+        codigo_usado: codigoUsado,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (err) {
+    console.warn('[FreshTouch] Webhook de venta falló (no crítico):', err);
+  }
+}
+
+// --- Pago con tarjeta — POS Cubo QPOS Cute (real, Web Bluetooth) ---
+// A diferencia de QR/código de caja/promoción (mock arriba), esta
+// pantalla habla con hardware real cuando hay una API key de sesión
+// configurada y el script del SDK cargó. Se detiene deliberadamente en
+// PAYMENT_SUCCESS — no llama a activateSess()/ESP32 todavía (autorización
+// explícita de esta fase: el enlace pago->ciclo físico queda desconectado
+// hasta validar el firmware v3 en hardware).
+function openPos() {
+  const price = currentPrice();
+  document.getElementById('pos-amt-lbl').textContent = `Q${price}.00`;
+  document.getElementById('pos-amt-big').textContent = `Q${price}.00`;
+  operation.send('REQUEST_PAYMENT');
+  go('s-pos');
+
+  let provider;
+  try {
+    provider = getCuboPayment();
+  } catch (err) {
+    renderPosScreen({ state: null, event: 'init_failed', message: err.message });
+    return;
+  }
+  const label = STATE.plan === 'basic' ? t().basic_name : t().premium_name;
+  provider.selectService({ label, amount: price });
+  renderPosScreen({ state: provider.getStatus() });
+}
+
+async function posConnect() {
+  // Llamada directamente desde el manejador de click del botón "Conectar
+  // POS" en index.html — a propósito, no envuelta en más async antes del
+  // primer await real: Web Bluetooth exige un gesto de usuario genuino
+  // para el primer emparejamiento, y esta app no intenta simularlo ni
+  // saltárselo.
+  try {
+    await cuboPayment.connectPos();
+    if (cuboPayment.getStatus() === CUBO_STATES.POS_CONNECTED) {
+      await cuboPayment.createPayment();
+    }
+  } catch (err) {
+    toast(`POS: ${err.message}`, 'er');
+  }
+}
+
+function posCancel() {
+  const status = cuboPayment?.getStatus();
+  if (status === CUBO_STATES.WAITING_FOR_CARD || status === CUBO_STATES.PROCESSING_PAYMENT) {
+    cuboPayment.cancelPayment();
+  }
+}
+
+async function posRetry() {
+  try {
+    await cuboPayment.retryPayment();
+    if (cuboPayment.getStatus() === CUBO_STATES.POS_CONNECTED) {
+      await cuboPayment.createPayment();
+    }
+  } catch (err) {
+    toast(`POS: ${err.message}`, 'er');
+  }
+}
+
+// Botón "← Volver" de s-pos — nunca desconecta el POS (requisito
+// explícito: mantener la conexión Bluetooth para el siguiente cliente
+// siempre que sea posible). Si había un cobro en curso, lo cancela antes
+// de salir; si no, simplemente vuelve, dejando al proveedor donde estaba.
+function cancelPos() {
+  posCancel();
+  operation.send('CANCEL');
+  go('s-payment');
+}
+
+// Botón "Volver al inicio" tras PAYMENT_SUCCESS — hallazgo confirmado:
+// antes esto solo llamaba a go('s-idle'), que es navegación puramente
+// visual. cuboPayment se quedaba internamente en PAYMENT_SUCCESS para
+// siempre, así que el segundo cliente nunca podía pasar de
+// selectService()/connectPos() (ambos exigen no estar ya en
+// PAYMENT_SUCCESS). acknowledgePaymentAndReturnToIdle() consume esa
+// autorización y deja el proveedor listo para un cliente nuevo — sin
+// tocar el ESP32 (no se llama, no se importa) y sin desconectar ni
+// reconectar el POS (el método no toca `adapter` en absoluto).
+function posAcknowledgeAndReturn() {
+  try {
+    cuboPayment?.acknowledgePaymentAndReturnToIdle();
+  } catch (err) {
+    // No debería pasar en el flujo normal (el botón solo se muestra en
+    // PAYMENT_SUCCESS) — si pasa, no bloquear al operador por eso: solo
+    // registrar y seguir navegando a IDLE de todos modos.
+    console.warn('[FreshTouch] posAcknowledgeAndReturn()', err.message);
+  }
+  go('s-idle');
+}
+
+// Botón "Continuar" tras PAYMENT_SUCCESS — consume la autorización del
+// pago real (requestCycle(): PAYMENT_SUCCESS -> CYCLE_IN_PROGRESS,
+// irreversible) y arranca el mismo flujo físico ya validado con el
+// código de promoción (activateSess() -> sessAction() ->
+// startVaporCountdown() -> startCycle() -> runPhase() -> cycleDone()).
+// Si requestCycle() falla (doble clic, pago ya consumido, estado
+// inválido) NO se toca el ESP32 en absoluto — se detiene aquí.
+function posContinueToCycle() {
+  try {
+    cuboPayment.requestCycle();
+  } catch (err) {
+    toast(`No se pudo iniciar el ciclo: ${err.message}`, 'er');
+    return;
+  }
+  activateSess();
+}
+
+function renderPosScreen(snapshot) {
+  const statusEl = document.getElementById('pos-status-txt');
+  const actionsEl = document.getElementById('pos-actions');
+  if (!statusEl || !actionsEl) return; // la pantalla no está montada todavía
+
+  const state = snapshot.state ?? cuboPayment?.getStatus();
+  const connectBtn = '<button class="btn-qr-manual" onclick="posConnect()">Conectar POS</button>';
+  const cancelBtn = '<button class="btn-back" onclick="posCancel()">Cancelar</button>';
+  const retryBtn = '<button class="btn-qr-manual" onclick="posRetry()">Reintentar</button>';
+  const continueBtn = '<button class="btn-qr-manual" onclick="posContinueToCycle()">Continuar</button>';
+  const homeBtn = '<button class="btn-back" onclick="posAcknowledgeAndReturn()">Volver al inicio</button>';
+
+  if (snapshot.event === 'init_failed') {
+    statusEl.textContent = `No se pudo iniciar el pago con POS: ${snapshot.message}`;
+    actionsEl.innerHTML = '<button class="btn-back" onclick="go(\'s-payment\')">← Volver</button>';
+    return;
+  }
+
+  if (snapshot.event === 'payment_pending') {
+    statusEl.textContent = `⏳ ${snapshot.message || 'No se pudo confirmar el pago con el banco todavía.'}`;
+    actionsEl.innerHTML = cancelBtn;
+    return;
+  }
+
+  switch (state) {
+    case CUBO_STATES.IDLE:
+    case CUBO_STATES.SERVICE_SELECTED:
+    case CUBO_STATES.PAYMENT_METHOD_SELECTED:
+      statusEl.textContent = 'Presiona conectar para continuar';
+      actionsEl.innerHTML = connectBtn;
+      break;
+    case CUBO_STATES.CONNECTING_POS:
+      statusEl.textContent = 'Conectando con el POS — autoriza el emparejamiento Bluetooth si tu navegador lo pide...';
+      actionsEl.innerHTML = '';
+      break;
+    case CUBO_STATES.POS_CONNECTED:
+      statusEl.textContent = 'POS conectado. Iniciando el cobro...';
+      actionsEl.innerHTML = '';
+      break;
+    case CUBO_STATES.WAITING_FOR_CARD:
+      statusEl.textContent = 'Esperando tarjeta — acerca o inserta la tarjeta en el POS';
+      actionsEl.innerHTML = cancelBtn;
+      break;
+    case CUBO_STATES.PROCESSING_PAYMENT:
+      statusEl.textContent = 'Procesando pago...';
+      actionsEl.innerHTML = cancelBtn;
+      break;
+    case CUBO_STATES.PAYMENT_SUCCESS:
+      statusEl.textContent = '✅ Pago aprobado. Listo para iniciar.';
+      actionsEl.innerHTML = continueBtn + homeBtn;
+      operation.send('PAYMENT_APPROVED');
+      // Reportar la venta solo en la notificación del resultado real de la
+      // transacción (snapshot.event === TRANSACTION_RESULT) — este mismo
+      // case también se re-ejecuta si el POS se desconecta después de un
+      // pago ya aprobado (ver handleDisconnected() en cuboCardProvider.js);
+      // sin este guard, esa re-notificación duplicaría la venta en Make.
+      if (snapshot.event === CUBO_EVENTS.TRANSACTION_RESULT) {
+        registrarVenta(currentPrice(), 'POS-CUBO');
+      }
+      break;
+    case CUBO_STATES.PAYMENT_DECLINED:
+      statusEl.textContent = `❌ Pago rechazado.${snapshot.message ? ' ' + snapshot.message : ''}`;
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_CANCELLED:
+      statusEl.textContent = 'Pago cancelado.';
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_ERROR:
+      statusEl.textContent = `⚠️ Error del POS.${snapshot.message ? ' ' + snapshot.message : ''}`;
+      actionsEl.innerHTML = retryBtn;
+      break;
+    case CUBO_STATES.PAYMENT_TIMEOUT:
+      statusEl.textContent = 'Tiempo de espera agotado.';
+      actionsEl.innerHTML = retryBtn;
+      break;
+    default:
+      statusEl.textContent = 'Presiona conectar para continuar';
+      actionsEl.innerHTML = connectBtn;
+  }
+}
+
+// --- Código de caja / promoción (mock) ---
+function openCode(type) {
+  STATE.codeType = type;
+  STATE.codeInput = '';
+  document.getElementById('code-disp').textContent = '_';
+  const l = t();
+  const cash = type === 'cash';
+  document.getElementById('code-hdr-t').textContent = cash ? l.code_cash_t : l.code_pro_t;
+  document.getElementById('code-hdr-s').textContent = cash ? l.code_cash_s : l.code_pro_s;
+  document.getElementById('code-ico').textContent = cash ? '💵' : '🎁';
+  document.getElementById('code-ttl').textContent = cash ? l.code_cash_t : l.code_pro_t;
+  document.getElementById('code-sub').innerHTML = (cash ? l.code_cash_s : l.code_pro_s) + ' <span class="mock-badge">MOCK</span>';
+  go('s-code');
+}
+
+function kp(key) {
+  if (key === 'DEL') STATE.codeInput = STATE.codeInput.slice(0, -1);
+  else if (key === 'OK') { validateCodeMock(); return; }
+  else if (STATE.codeInput.length < 12) STATE.codeInput += key;
+  document.getElementById('code-disp').textContent = STATE.codeInput || '_';
+}
+
+async function validateCodeMock() {
+  // MOCK: cualquier código no vacío se acepta — Fase 1 no tiene un
+  // Data Store real de códigos que validar (eso es Fase 2+).
+  if (STATE.codeInput.length === 0) {
+    toast(t().tk.code_bad, 'er');
+    return;
+  }
+  toast(t().tk.code_ok, 'ok');
+  operation.send('REQUEST_PAYMENT');
+  await payment.selectService({ label: STATE.plan, amount: currentPrice() });
+  await payment.connectPos();
+  await payment.createPayment({ outcome: 'SUCCESS' });
+  if (payment.canStartCycle()) operation.send('PAYMENT_APPROVED');
+  setTimeout(activateSess, 400);
+}
+
+// --- Sesión (abrir puerta / iniciar) ---
+function activateSess() {
+  // Corrección de Fase 3: antes de esto, CONFIRM_READY nunca se enviaba
+  // — operationState quedaba atascado en PAYMENT_APPROVED para siempre
+  // (OPEN_DOOR no es una transición válida desde ahí), así que
+  // canRunCycle() jamás llegaba a ser true por el flujo real. No era
+  // visible porque nada dependía todavía de ese estado; ahora que
+  // assertCanStartCycle() sí lo exige (ver startCycle()), hace falta que
+  // la cadena de estados avance de verdad.
+  operation.send('CONFIRM_READY');
+  STATE.sessStep = 1;
+  STATE.doorOpen = false;
+  const plan = STATE.plan === 'basic' ? t().basic_name : t().premium_name;
+  document.getElementById('sess-plan-hdr').textContent = `${plan} Q${currentPrice()}`;
+  updateSessUI();
+  go('s-session');
+}
+
+function updateSessUI() {
+  const l = t();
+  ['ss1', 'ss2', 'ss3'].forEach((id, i) => document.getElementById(id).classList.toggle('on', i < STATE.sessStep));
+  const btn = document.getElementById('sess-btn');
+  // El botón se deshabilita al arrancar el precalentamiento
+  // (startVaporCountdown()) y nunca se reactivaba para la siguiente
+  // sesión — quedaba deshabilitado hasta refrescar la página. Se
+  // reactiva aquí porque este es el punto de entrada de toda sesión
+  // nueva (activateSess() -> go('s-session')).
+  btn.disabled = false;
+  btn.style.opacity = '';
+  if (STATE.sessStep === 1) {
+    document.getElementById('sess-anim').textContent = '🚪';
+    document.getElementById('sess-inst').textContent = l.sess_open_i;
+    document.getElementById('sess-sub').textContent = l.sess_open_s;
+    btn.textContent = l.btn_open;
+    btn.className = 'btn-act blue';
+  } else {
+    document.getElementById('sess-anim').innerHTML = '<img src="assets/img/img02.png" style="height:64px;object-fit:contain;">';
+    document.getElementById('sess-inst').textContent = l.sess_start_i;
+    document.getElementById('sess-sub').textContent = l.sess_start_s;
+    btn.textContent = l.btn_start;
+    btn.className = 'btn-act green';
+  }
+}
+
+// Sonido de "click" al abrir/cerrar la puerta — portado literal del
+// playSound('puerta_abre'/'puerta_cierra') real de HX01 (app.js, rama
+// main): un tono sintetizado con Web Audio API, no depende de ningún
+// archivo de audio. Se agrega ahora porque todavía no está decidido/
+// instalado el mecanismo físico de puerta (electroimán) — mientras
+// tanto, el comando real al relé 'puerta' se sigue enviando siempre
+// (el cableado al pin queda listo para cuando se instale el mecanismo
+// real), y este sonido le da al operador una confirmación audible.
+function playDoorSound(open) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    if (open) {
+      osc.frequency.setValueAtTime(350, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(750, ctx.currentTime + 0.25);
+    } else {
+      osc.frequency.setValueAtTime(750, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + 0.25);
+    }
+    gain.gain.setValueAtTime(0.45, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (err) {
+    console.error('[FreshTouch] playDoorSound() falló:', err);
+  }
+}
+
+// ETAPA 2 — setDoor() envía el comando del relé "puerta" al ESP32.
+// LIMITACIÓN DOCUMENTADA (condición #10 de la autorización): un 200 OK
+// del ESP32 solo confirma que el comando fue RECIBIDO — este firmware no
+// tiene ningún sensor de puerta, así que nada aquí puede confirmar que el
+// electroimán físicamente abrió o retuvo la puerta.
+//
+// POLARIDAD SIN VERIFICAR (condición #5): open=true sigue usando la
+// misma convención heredada desde Fase 1 ("abrir"), open=false para
+// "cerrar/asegurar" (nuevo en ETAPA 2). No se invierte ni se asume nada
+// distinto — no se pudo hacer la prueba física porque la puerta todavía
+// no está conectada. Antes de operar con clientes reales, hay que
+// confirmar físicamente cuál sentido (ON/OFF) corresponde a abrir vs.
+// retener, tal como se pidió.
+async function setDoor(open) {
+  await esp32.setRelay('puerta', open);
+  STATE.doorOpen = open;
+  playDoorSound(open);
+  toast(open ? t().tk.door_opened : t().tk.door_closed, open ? 'in' : 'ok');
+}
+
+// Un fallo real de ESP32 durante el ciclo ya NO detiene ni bloquea nada —
+// igual que en HX01 real (app.js, cycleDone(): notifyCycleDone() ahí es
+// disparar-y-olvidar, sin manejo de error de ningún tipo). Se sigue
+// registrando en consola + un toast breve, para poder diagnosticar, pero
+// el flujo del cliente siempre continúa hasta "Retira tu casco" —
+// instrucción explícita, revirtiendo el bloqueo que tenía esta etapa
+// antes.
+function logCycleWarning(context, err) {
+  console.error(`[FreshTouch] ${context} — el ESP32 no respondió bien (no bloqueante):`, err);
+  toast(`Aviso: ${context} no respondió.`, 'er');
+}
+
+// Un ciclo está "autorizado por Cubo real" si y solo si cuboPayment
+// existe y su máquina de estados está en CYCLE_IN_PROGRESS — eso SOLO
+// ocurre tras un requestCycle() exitoso (ver posContinueToCycle()) y es
+// la única fuente de verdad; el camino mock/código de promoción nunca
+// toca cuboPayment, así que esto siempre da false ahí.
+function isCuboAuthorizedCycle() {
+  return cuboPayment?.getStatus() === CUBO_STATES.CYCLE_IN_PROGRESS;
+}
+
+// Camino Cubo real: hay un pago real de por medio — fail-closed, detiene
+// el ciclo y deja un estado de error visible, sin ninguna acción
+// disponible para el cliente. Recuperación SIEMPRE manual desde Admin
+// (adminResetStuckCycle()) — nunca automática.
+function handleCuboCycleFailure(context, err) {
+  console.error(`[FreshTouch] ${context} — fallo real de ESP32 durante un ciclo pagado con Cubo:`, err);
+  clearInterval(cycTimer);
+  clearInterval(extraTimer);
+  clearInterval(doneTimer);
+  go('s-cycle');
+  const l = t();
+  document.getElementById('cyc-ico').textContent = '⚠️';
+  document.getElementById('cyc-ph-nm').textContent = l.cycle_error_nm;
+  document.getElementById('cyc-ph-lbl').textContent = `${l.cycle_error_lbl}: ${context} — ${err?.message || err}`;
+  toast(l.cycle_error_nm, 'er');
+}
+
+// Punto único de manejo de error para cualquier llamada real al ESP32
+// durante el ciclo. Decide cuál criterio aplica según si el ciclo actual
+// fue autorizado por un pago real de Cubo (isCuboAuthorizedCycle()):
+// mock/promoción nunca bloquea (igual que HX01 real); Cubo real sí,
+// porque ahí un fallo silencioso significaría cobrarle a un cliente por
+// un ciclo que no se completó físicamente. Devuelve true si el llamador
+// debe DETENERSE (no seguir la secuencia).
+function handleCycleStepFailure(context, err) {
+  if (isCuboAuthorizedCycle()) {
+    handleCuboCycleFailure(context, err);
+    return true;
+  }
+  logCycleWarning(context, err);
+  return false;
+}
+
+// Botón "← Volver" de s-session — el cliente todavía no inició el
+// ciclo cronometrado (solo pudo, a lo sumo, abrir la puerta), así que
+// RESET es seguro: regresa operationState a IDLE (transición ya
+// existente desde READY_TO_START y DOOR_OPEN, ver operationStateMachine.js)
+// y vuelve a la pantalla de inicio, igual que cancelQR()/cancelPos().
+function cancelSession() {
+  operation.send('RESET');
+  go('s-idle');
+}
+
+async function sessAction() {
+  if (STATE.sessStep === 1) {
+    try {
+      await setDoor(true);
+    } catch (err) {
+      if (handleCycleStepFailure('Abrir puerta', err)) return;
+    }
+    operation.send('OPEN_DOOR');
+    STATE.sessStep = 2;
+    updateSessUI();
+  } else {
+    startVaporCountdown();
+  }
+}
+
+// Precalentamiento — reproduce startVaporCountdown() real de HX01: vapor
+// y UV se encienden juntos de inmediato, la puerta se queda abierta
+// durante todo este paso (se asegura recién al arrancar la fase 1, ver
+// runPhase()), con una cuenta regresiva visible de PREHEAT_SECONDS (15s
+// reales de HX01, CFG.durPreheat) antes de arrancar el ciclo cronometrado.
+async function startVaporCountdown() {
+  clearInterval(cycTimer);
+  clearInterval(extraTimer);
+  const btn = document.getElementById('sess-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  const l = t();
+  document.getElementById('sess-anim').textContent = '💧';
+  document.getElementById('sess-inst').textContent = l.sess_preheat_i;
+
+  try {
+    await esp32.setRelay('vapor', true);
+  } catch (err) {
+    if (handleCycleStepFailure('Encender vapor (precalentamiento)', err)) return;
+  }
+  try {
+    await esp32.setRelay('luzuv', true);
+  } catch (err) {
+    if (handleCycleStepFailure('Encender UV (precalentamiento)', err)) return;
+  }
+
+  let secs = PREHEAT_SECONDS;
+  const updatePreheatSub = () => {
+    const unit = secs === 1 ? l.sess_preheat_sec : l.sess_preheat_secs;
+    document.getElementById('sess-sub').textContent = `${l.sess_preheat_starting} ${secs} ${unit}...`;
+  };
+  updatePreheatSub();
+  const preheatTimer = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(preheatTimer);
+      startCycle();
+    } else {
+      updatePreheatSub();
+    }
+  }, 1000);
+}
+
+// --- Ciclo ---
+async function startCycle() {
+  operation.send('START_CYCLE');
+  // Fail-closed (Fase 3): si el intento de transición de arriba no fue
+  // válido — p. ej. algo llamó a startCycle() sin haber pasado por un
+  // pago aprobado — operation.getState() NO habrá llegado a
+  // CYCLE_RUNNING, y esta guardia lo detiene aquí, antes de emitir
+  // cualquier orden real al ESP32. No es una comprobación cosmética: es
+  // la misma canRunCycle() que ya usan y prueban operationState/ y
+  // esp32/cycleSafety.js.
+  try {
+    assertCanStartCycle(operation.getState());
+  } catch (err) {
+    console.error(err);
+    toast('No se puede iniciar el ciclo: pago no confirmado.', 'er');
+    go('s-idle');
+    return;
+  }
+  cyPhIdx = 0;
+  document.getElementById('cyc-mid').textContent = machineConfig.machineId;
+  go('s-cycle');
+  runPhase();
+}
+
+// Una fase puede ser un solo tramo (dur) o una secuencia de pulsos
+// ON/OFF (pulses: [segOn, segOff, segOn, ...], siempre empieza en ON) —
+// ej. secado: [50, 3, 50] = 50s encendido, pausa de 3s, 50s encendido
+// otra vez. cyDur/cySecs siguen representando el TOTAL de la fase (para
+// que el cronómetro/barra de progreso cuenten parejo sin saltos),
+// aunque el relé se apague durante los tramos de pausa. Fases sin
+// `pulses` (o sin `comp`) se comportan exactamente igual que antes: un
+// solo tramo, on al empezar, off al terminar.
+async function runPhase() {
+  const phases = CYCLES[STATE.plan];
+  if (cyPhIdx >= phases.length) { cycleDone(); return; }
+  cyCurPh = phases[cyPhIdx];
+  const pulses = cyCurPh.pulses || [cyCurPh.dur];
+  cyDur = pulses.reduce((a, b) => a + b, 0);
+  cySecs = cyDur;
+  const l = t();
+  document.getElementById('cyc-ico').textContent = cyCurPh.ico;
+  document.getElementById('cyc-ph-nm').textContent = l[cyCurPh.segLabels ? cyCurPh.segLabels[0] : cyCurPh.nm];
+  document.getElementById('cyc-ph-lbl').textContent = l[cyCurPh.lbl];
+  ['cp0', 'cp1', 'cp2'].forEach((id, i) => {
+    document.getElementById(id).className = `cph${i < cyPhIdx ? ' done' : i === cyCurPh.ph ? ' cur' : i === cyPhIdx ? ' cur' : ''}`;
+  });
+  let segIdx = 0; // par = tramo ON, impar = tramo OFF (pausa)
+  let segSecsLeft = pulses[0];
+  if (cyCurPh.comp) {
+    try {
+      await esp32.setRelay(cyCurPh.comp, true);
+    } catch (err) {
+      if (handleCycleStepFailure(`${cyCurPh.comp} ON`, err)) return;
+    }
+  }
+  // Solo la fase 1 (vapor) asegura la puerta al arrancar — igual que el
+  // onStart() real de HX01 para esa fase (relay(vapor,true) seguido de
+  // relay(puerta,false)). Las fases 2 y 3 no tocan la puerta.
+  if (cyCurPh.doorSecureOnStart) {
+    try {
+      await setDoor(false);
+    } catch (err) {
+      if (handleCycleStepFailure('Asegurar puerta', err)) return;
+    }
+  }
+  updateCycTimer();
+  clearInterval(cycTimer);
+  cycTimer = setInterval(async () => {
+    cySecs--;
+    segSecsLeft--;
+    updateCycTimer();
+    if (segSecsLeft > 0) return;
+
+    const endingSegWasOn = segIdx % 2 === 0;
+    segIdx++;
+    const isLastSegment = segIdx >= pulses.length;
+
+    if (cyCurPh.comp) {
+      // Termina un tramo ON -> apaga (para pausar, o porque la fase
+      // terminó). Termina un tramo OFF (pausa) -> vuelve a encender
+      // para el siguiente pulso.
+      const nextState = !endingSegWasOn;
+      try {
+        await esp32.setRelay(cyCurPh.comp, nextState);
+      } catch (err) {
+        if (handleCycleStepFailure(`${cyCurPh.comp} ${nextState ? 'ON' : 'OFF'}`, err)) return;
+      }
+    }
+
+    if (isLastSegment) {
+      clearInterval(cycTimer);
+      cyPhIdx++;
+      setTimeout(runPhase, PHASE_TRANSITION_MS);
+    } else {
+      segSecsLeft = pulses[segIdx];
+      if (cyCurPh.segLabels) {
+        document.getElementById('cyc-ph-nm').textContent = t()[cyCurPh.segLabels[segIdx]];
+      }
+    }
+  }, 1000);
+}
+
+function updateCycTimer() {
+  const m = Math.floor(cySecs / 60), s = cySecs % 60;
+  document.getElementById('cyc-timer').textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+  document.getElementById('cyc-prog').style.width = `${((cyDur - cySecs) / cyDur) * 100}%`;
+}
+
+// Replica el cycleDone() real de HX01 (app.js, rama main): apaga UV y
+// notifica el fin del ciclo disparar-y-olvidar (sin bloquear si fallan,
+// solo se registra), y abre la puerta ~1.2s después de llegar a
+// "Retira tu casco" para que el cliente pueda sacar su casco — igual
+// patrón y mismo retraso que el setTimeout(...,1200) real de HX01.
+async function cycleDone() {
+  try {
+    await esp32.setRelay('luzuv', false);
+  } catch (err) {
+    if (handleCycleStepFailure('Apagar UV', err)) return;
+  }
+  try {
+    await esp32.notifyCycleDone(STATE.plan);
+  } catch (err) {
+    if (handleCycleStepFailure('notifyCycleDone', err)) return;
+  }
+  // Solo si este ciclo fue autorizado por un pago real de Cubo: consumir
+  // la autorización de verdad, únicamente después de que notifyCycleDone()
+  // haya tenido éxito arriba — nunca antes, nunca si falló (por eso este
+  // bloque va después de los dos try/catch de arriba, no antes).
+  if (isCuboAuthorizedCycle()) {
+    try {
+      cuboPayment.reportCycleComplete();
+    } catch (err) {
+      if (handleCycleStepFailure('reportCycleComplete', err)) return;
+    }
+  }
+  operation.send('CYCLE_DONE');
+  go('s-done');
+  document.getElementById('btn-extra').style.display = 'block';
+  document.getElementById('extra-run').style.display = 'none';
+  startDoneTimer();
+  setTimeout(async () => {
+    try {
+      await setDoor(true);
+    } catch (err) {
+      handleCycleStepFailure('Abrir puerta al finalizar', err);
+    }
+  }, 1200);
+}
+
+async function startExtraDry() {
+  document.getElementById('btn-extra').style.display = 'none';
+  document.getElementById('extra-run').style.display = 'block';
+  try {
+    await esp32.setRelay('secado', true);
+  } catch (err) {
+    console.error('[FreshTouch] startExtraDry() falló al encender secado:', err);
+    toast('No se pudo activar el secado extra.', 'er');
+    document.getElementById('extra-run').style.display = 'none';
+    document.getElementById('btn-extra').style.display = 'block';
+    return;
+  }
+  let s = 5; // acortado para Fase 1 — HX01 real usa 60s
+  clearInterval(extraTimer);
+  extraTimer = setInterval(async () => {
+    s--;
+    document.getElementById('extra-timer').textContent = `0:0${Math.max(s, 0)}`;
+    if (s <= 0) {
+      clearInterval(extraTimer);
+      try {
+        await esp32.setRelay('secado', false);
+      } catch (err) {
+        console.error('[FreshTouch] startExtraDry() falló al apagar secado:', err);
+        toast('Error al apagar el secado extra — revisa manualmente.', 'er');
+        return;
+      }
+      document.getElementById('extra-run').textContent = '✅ Listo';
+    }
+  }, 1000);
+}
+
+function startDoneTimer() {
+  clearInterval(doneTimer);
+  // La puerta se abrió en cycleDone() (~1.2s después de llegar aquí) para
+  // que el cliente retire su casco. Tras 20s sin acción, se cierra sola
+  // y regresa a inicio — mismo patrón que HX01 real (startDoneTimer(),
+  // ahí a los 30s; aquí 20s por instrucción explícita).
+  let s = 20;
+  doneTimer = setInterval(() => {
+    s--;
+    const el = document.getElementById('done-auto-n');
+    if (el) el.textContent = s;
+    if (s <= 0) {
+      clearInterval(doneTimer);
+      finishSess();
+    }
+  }, 1000);
+}
+
+async function finishSess() {
+  clearInterval(doneTimer);
+  clearInterval(extraTimer);
+  clearInterval(cycTimer);
+  // Cierre real de la puerta ("cerrar" = desconectar la energía/señal
+  // del relé) al volver a inicio — igual que HX01 real (finishSess()
+  // también cierra ahí, sin importar si llegó por el timeout de 20s o
+  // por el botón "Finalizar").
+  try {
+    await setDoor(false);
+  } catch (err) {
+    logCycleWarning('Cerrar puerta al finalizar', err);
+  }
+  operation.send('RETURN_TO_IDLE');
+  go('s-idle');
+}
+
+// --- Factura (mock) ---
+function submitInvoice() {
+  const name = document.getElementById('inv-name').value.trim();
+  const email = document.getElementById('inv-email').value.trim();
+  if (!name || !email) { toast(t().tk.inv_f, 'er'); return; }
+  toast('🧾 Factura enviada (mock, sin INFILE real)', 'ok');
+  setTimeout(() => go('s-done'), 1200);
+}
+
+function closeEmg() {
+  document.getElementById('emg-modal').classList.remove('on');
+}
+
+// Reset manual de operationState — herramienta general de Admin (rol
+// sa/tc, ver renderAdminBody()). Nunca se llama automáticamente desde
+// ningún camino de error del flujo de cliente.
+function adminResetStuckCycle() {
+  operation.send('RESET');
+  go('s-idle');
+  toast('Ciclo reiniciado desde Admin', 'in');
+}
+
+// --- Arranque ---
+initBubbles();
+applyLang(machineConfig.prices);
+
+// Fase 3: la app intenta conectar con el controlador de ESP32 al
+// arrancar — hoy el mock (siempre exitoso salvo que un test inyecte una
+// falla). No bloquea el resto de la app si falla: un cliente debe poder
+// seguir viendo pantallas / que el admin entre a diagnosticar aunque el
+// ESP32 no responda; lo que sí queda fail-closed es el inicio del ciclo
+// en sí (ver startCycle()), no la app entera.
+esp32.connect().then((result) => {
+  console.log(`[ESP32] connect() (modo "${machineConfig.esp32Mode || 'mock'}", esp32Address="${machineConfig.esp32Address}") exitoso:`, result);
+}).catch((err) => {
+  console.error(`[ESP32] connect() (modo "${machineConfig.esp32Mode || 'mock'}", esp32Address="${machineConfig.esp32Address}") falló al arrancar:`, err);
+});
+
+window.go = go;
+window.admTap = admTap;
+window.closePIN = closePIN;
+window.pinTap = pinTap;
+window.checkPIN = checkPIN;
+window.exitAdmin = exitAdmin;
+window.selectPlan = selectPlan;
+window.openQR = openQR;
+window.cancelQR = cancelQR;
+window.qrManualConfirm = qrManualConfirm;
+window.openPos = openPos;
+window.posConnect = posConnect;
+window.posCancel = posCancel;
+window.posRetry = posRetry;
+window.cancelPos = cancelPos;
+window.posAcknowledgeAndReturn = posAcknowledgeAndReturn;
+window.posContinueToCycle = posContinueToCycle;
+window.openCode = openCode;
+window.kp = kp;
+window.sessAction = sessAction;
+window.cancelSession = cancelSession;
+window.startExtraDry = startExtraDry;
+window.finishSess = finishSess;
+window.submitInvoice = submitInvoice;
+window.closeEmg = closeEmg;
+window.__ftaExportConfig = exportConfig;
+window.__ftaResetMachine = resetMachine;
+window.__ftaSaveProvisioning = saveProvisioning;
+window.__ftaRestoreProvisioning = restoreProvisioning;
+window.__ftaSaveSecrets = saveSecrets;
+window.__ftaClearSecrets = clearSecrets;
+window.__ftaResetStuckCycle = adminResetStuckCycle;

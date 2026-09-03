@@ -1,0 +1,16 @@
+{
+  "name": "fresh-touch-app-web",
+  "version": "0.1.0-fase1",
+  "private": true,
+  "type": "module",
+  "description": "FreshTouch App HX02+ — capa web, agnostica del contenedor (TWA/Capacitor/navegador). Fase 1: base + UI reutilizada + arquitectura modular. Independiente de HX01, de freshtouch-hx02-cubo-lab y de freshtouch-core.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "python3 -m http.server 8090"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18"
+  }
+}
