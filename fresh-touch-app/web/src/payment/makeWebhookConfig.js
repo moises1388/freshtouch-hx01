@@ -14,9 +14,14 @@
 // este código a los identificadores internos que usa el config.js de la
 // otra máquina (ver isolation.test.js).
 //
-// Se configuran una sola vez desde Admin (panel de Secretos) y quedan
-// guardadas para la máquina en ese navegador — no hay que volver a
-// pegarlas en cada sesión.
+// DEFAULTS: por instrucción explícita del dueño (asumiendo el riesgo de
+// tenerlos en el repo, que a partir de este cambio queda privado en
+// GitHub) son el mismo escenario/webhooks de Make que ya usa HX01 en
+// producción — así HX02 queda funcionando sin necesitar ningún paso
+// manual en Admin. Un valor guardado desde Admin (ver
+// saveMakeWebhookConfig()) sigue teniendo prioridad sobre este default —
+// se puede seguir cambiando sin tocar código ni redeploy si algún día
+// hace falta un escenario de Make distinto para HX02.
 
 import { createKeyValueStore } from '../machineConfig/machineConfigStore.js';
 
@@ -24,11 +29,18 @@ const STORAGE_KEY = 'freshtouch.secret.makeWebhooks';
 const FIELDS = ['salesWebhookUrl', 'qrWebhookUrl', 'qrPollWebhookUrl', 'webhookSecret'];
 const store = createKeyValueStore();
 
+const DEFAULTS = {
+  salesWebhookUrl: 'https://hook.us2.make.com/eflzu6yezv4r9fwlqtueu7ojkueulimw',
+  qrWebhookUrl: 'https://hook.us2.make.com/n0xdf2qxqkm1v4ty6uyff1wrix1aq4dm',
+  qrPollWebhookUrl: 'https://hook.us2.make.com/mn4nu977eog6tzpg46ashfcwspexyh0q',
+  webhookSecret: 'ea0b883de6fb4542a865b23f6fdac59903b4f411405d71c0e94052f6a0cdd247',
+};
+
 function getMakeWebhookConfig() {
   const raw = store.get(STORAGE_KEY);
   const saved = raw ? JSON.parse(raw) : {};
   const cfg = {};
-  for (const f of FIELDS) cfg[f] = saved[f] || '';
+  for (const f of FIELDS) cfg[f] = saved[f] || DEFAULTS[f] || '';
   return cfg;
 }
 
