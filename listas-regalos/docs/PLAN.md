@@ -91,8 +91,8 @@ mismo regalo no exceden la meta; un usuario sin rol no lee otro evento; nada se 
 
 > Permisos financieros [DECIDIDO]: solo `owner` confirma, rechaza, anula, define la tasa
 > de una confirmación y ve el historial financiero completo. Para el resto de acciones de
-> `admin`/`viewer` (abiertas) se aplica la opción más restrictiva reversible: `admin` edita
-> contenido del evento (regalos, textos); `viewer` solo lectura no financiera.
+> `admin`/`viewer` [ABIERTO] se aplica la opción más restrictiva y reversible: **solo
+> `owner` escribe**; `admin` y `viewer` tienen lectura no financiera hasta que se decida.
 
 - Autenticación de administradores y roles por evento.
 - CRUD de evento, beneficiarios, regalos, **destino de fondos** (texto genérico por ahora).
