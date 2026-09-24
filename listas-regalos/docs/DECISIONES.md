@@ -18,5 +18,6 @@
 | PLAN | 2026-09-24 | Plan | PLAN aprobado con estas decisiones. BUILD solo por fases, después de trasladar la documentación y verificar el repositorio. | DECIDIDO |
 | C10 | 2026-09-24 | Anulación y regalos completados | El regalo se reabre; excedentes posteriores al fondo general no se mueven; no se recalculan aportes históricos; auditoría e historial explican el cambio. | DECIDIDO |
 | P9a | 2026-09-24 | Quién anula | Solo el dueño (`owner`) del evento, en el MVP. | DECIDIDO (MVP) |
+| P9b | 2026-09-24 | Permisos financieros | Solo `owner`: confirmar, rechazar, anular, definir la tasa de una confirmación, ver historial financiero completo. Otros administradores no, en el MVP. | DECIDIDO (MVP) |
 | TASA | 2026-09-24 | Fuente de la tasa | Manual. El administrador la introduce al confirmar. Sin API automática. | DECIDIDO (MVP) |
 | AUT | 2026-09-24 | Autonomía | Avanzar por fases sin aprobación en cada paso, dentro de los límites de alcance; decisiones de negocio, dinero, seguridad, permisos o privacidad se registran como ABIERTO. | DECIDIDO |

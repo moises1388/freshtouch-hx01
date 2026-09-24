@@ -72,15 +72,15 @@ EVENTO → REGALOS → DECLARACIÓN DE APORTE → APORTE PENDIENTE → CONFIRMAC
 | RF-24 | Crear, editar, ordenar, ocultar y archivar regalos. |
 | RF-25 | Registrar la **tasa de referencia** AUD→GTQ (manual) en un único lugar, con historial. Se usa para mostrar `≈ Q` y como valor sugerido al confirmar. |
 | RF-26 | Listar aportes por estado; buscar por referencia. |
-| RF-27 | **Confirmar**: ingresar monto y moneda recibidos y, si la moneda no es AUD, **la tasa AUD→GTQ** (precargada con la tasa de referencia, editable). El sistema calcula AUD y la distribución y muestra una **vista previa** antes de confirmar. [DECIDIDO] tasa manual |
-| RF-28 | **Rechazar** un pendiente con motivo. |
+| RF-27 | **Confirmar** (solo `owner`): ingresar monto y moneda recibidos y, si la moneda no es AUD, **la tasa AUD→GTQ** (precargada con la tasa de referencia, editable). El sistema calcula AUD y la distribución y muestra una **vista previa** antes de confirmar. [DECIDIDO] tasa manual |
+| RF-28 | **Rechazar** un pendiente con motivo (solo `owner`). |
 | RF-29 | **Anular** un aporte confirmado con motivo (C5) — **solo el dueño del evento** (P9); opcionalmente registrar el aporte corregido referenciando al anulado. |
 | RF-35 | Ver el **historial de un regalo**: confirmaciones, excedentes, anulaciones y cómo cambió su recaudado/faltante, para explicar por qué un regalo completado volvió a tener faltante (C10). |
 | RF-30 | Registrar directamente un aporte recibido por otro medio (sigue el mismo cálculo). |
 | RF-31 | Moderar mensajes (si son públicos — P13). |
 | RF-32 | Exportar aportes, asignaciones y mensajes (CSV). |
 | RF-33 | Publicar / cerrar evento. |
-| RF-34 | Ver el historial de auditoría de aportes, tasas y regalos. |
+| RF-34 | Ver el historial de auditoría de aportes, tasas y regalos. El **historial financiero completo** es solo para `owner`. Qué ven los demás roles: [ABIERTO]. |
 
 ### Reglas de negocio
 
@@ -101,7 +101,7 @@ EVENTO → REGALOS → DECLARACIÓN DE APORTE → APORTE PENDIENTE → CONFIRMAC
 | RN-13 | **Sin tolerancia** por tipo de cambio: se registra el AUD real resultante del monto recibido; **no se completa artificialmente** la diferencia. El regalo queda con faltante y puede completarse con otro aporte. | DECIDIDO C3 |
 | RN-14 | **Anulación:** requiere motivo; guarda usuario, fecha/hora y referencia al aporte original. Las asignaciones del aporte anulado dejan de contar. | DECIDIDO C5 |
 | RN-15 | Al anular, el regalo **se reabre** según el monto que deja de contar; **no se recalculan ni modifican** aportes históricos ni se mueven retroactivamente los excedentes posteriores enviados al fondo general. La auditoría registra el recaudado/faltante del regalo antes y después de la anulación. | DECIDIDO C10 |
-| RN-16 | Solo el rol `owner` del evento puede anular. Otros administradores no. | DECIDIDO P9 (MVP) |
+| RN-16 | **Permisos financieros:** solo el `owner` del evento puede confirmar, rechazar y anular aportes, definir la tasa usada en una confirmación y consultar el historial financiero completo. Los demás administradores no tienen esas acciones en el MVP. | DECIDIDO P9 (MVP) |
 | RN-18 | La tasa contable es **manual**: la introduce el administrador al confirmar (precargada con la de referencia). Se guarda en el aporte con fuente `manual` y fecha/hora. Sin API automática. | DECIDIDO |
 | RN-17 | Anonimato: el nombre de un aporte anónimo nunca aparece en vistas públicas. Alcance frente a beneficiarios: P8. | parcialmente ABIERTO |
 
@@ -362,8 +362,8 @@ Hosting de Next.js: [ABIERTO] (no bloquea las Fases 0–2).
 ## 15. Preguntas abiertas
 
 - **Método de entrega del dinero** (P2 restante) — bloquea solo la publicación real.
-- **P8** anonimato frente a beneficiarios · **P9** resto de permisos de administradores
-  (quién puede confirmar/rechazar; anular ya es solo `owner`) ·
+- **P8** anonimato frente a beneficiarios · **P9-resto** qué pueden hacer/ver `admin` y
+  `viewer` fuera de las acciones financieras (p. ej. editar regalos, moderar mensajes) ·
   **P10** acceso a la página y visibilidad de montos individuales · **P11** idioma ·
   **P13** mensajes públicos/privados · **P14** fecha del evento · **P15** contenido de la
   lista · **P16** aporte mínimo.

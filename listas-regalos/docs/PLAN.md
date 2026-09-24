@@ -24,7 +24,7 @@
 | **G0** | Repositorio `listas-regalos` creado y verificado · stack | Stack DECIDIDO (Next.js + Supabase); repositorio pendiente |
 | **G1** | C2 · C3 · C5 · C10 | DECIDIDAS |
 | **G2** | C4 · P8 anonimato · P10 acceso · P13 mensajes · P16 mínimo | C4 DECIDIDA; resto ABIERTO — bloquea Fase 4 |
-| **G3** | P9 administradores | Anular = solo `owner` (DECIDIDO). Quién confirma/rechaza: ABIERTO — ver nota Fase 3 |
+| **G3** | P9 administradores | Acciones financieras = solo `owner` (DECIDIDO). Resto de permisos de `admin`/`viewer`: ABIERTO (no bloquea el núcleo) |
 | **G4** | Método de entrega del dinero · P14 fecha · P15 contenido · P11 idioma · hosting | ABIERTO — bloquea Fase 6 |
 
 Tasa: manual, introducida al confirmar (DECIDIDO).
@@ -89,9 +89,10 @@ mismo regalo no exceden la meta; un usuario sin rol no lee otro evento; nada se 
 
 ### Fase 3 — Panel de administración
 
-> Nota: mientras P9 siga abierto para confirmar/rechazar, se implementa la regla más
-> restrictiva y reversible: **solo `owner`** confirma, rechaza y anula. Si se decide que
-> `admin` también confirme/rechace, basta con ampliar el permiso. Queda como [ABIERTO].
+> Permisos financieros [DECIDIDO]: solo `owner` confirma, rechaza, anula, define la tasa
+> de una confirmación y ve el historial financiero completo. Para el resto de acciones de
+> `admin`/`viewer` (abiertas) se aplica la opción más restrictiva reversible: `admin` edita
+> contenido del evento (regalos, textos); `viewer` solo lectura no financiera.
 
 - Autenticación de administradores y roles por evento.
 - CRUD de evento, beneficiarios, regalos, **destino de fondos** (texto genérico por ahora).
