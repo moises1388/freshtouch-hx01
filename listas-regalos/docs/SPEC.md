@@ -1,41 +1,42 @@
 # listas-regalos — Especificación
 
-> **Estado:** SPEC v0.2 (2026-09-24). Incorpora las decisiones P1, P3, P4, P5, P6 y P7.
-> No hay código todavía. Siguiente etapa: PLAN (ver `PLAN.md`).
+> **Estado:** SPEC v0.3 (2026-09-24). Incorpora P1–P7, P2 (parcial), C2–C5 y el stack.
+> Siguiente etapa: BUILD por fases según `PLAN.md`, **después** de trasladar la
+> documentación al repositorio `listas-regalos` y verificar ese estado.
 >
-> **Repositorio [DECIDIDO]:** el proyecto vive en un repositorio independiente llamado
-> **`listas-regalos`**, sin mezcla ni dependencias con Hydrox, FreshTouch, B&R o Forja, y
-> preparado para evolucionar como producto/SaaS independiente. Mientras ese repositorio se
-> crea, estos documentos están temporalmente en la carpeta aislada `listas-regalos/` de una
-> rama de `freshtouch-hx01` que **no debe fusionarse**. Al existir el repositorio nuevo se
-> copian allí y se borra esta rama.
+> **Repositorio [DECIDIDO]:** repositorio privado independiente **`listas-regalos`**, sin
+> mezcla ni dependencias con Hydrox, FreshTouch, B&R o Forja; evolucionable a SaaS. Mientras
+> no esté disponible, estos documentos viven temporalmente en la carpeta aislada
+> `listas-regalos/` de una rama de `freshtouch-hx01` que **no debe fusionarse con main**.
 
 Convenciones: **[DECIDIDO]** lo definió el usuario · **[PROPUESTA]** sugerencia pendiente de
-aprobación · **[ABIERTO]** alternativas sin elegir.
-
-Registro de decisiones: ver `DECISIONES.md`.
+aprobación · **[ABIERTO]** sin decidir. Registro de decisiones: `DECISIONES.md`.
 
 ---
 
 ## 1. Comprensión del proyecto
 
 Una plataforma web donde un **evento** publica una **lista de regalos** que funcionan como
-**metas de recaudación**, no como productos a la venta. Los invitados **registran aportes**
-—totales o parciales— a un regalo o al **fondo general** y dejan un mensaje. Un
-administrador **verifica que el dinero llegó** y **confirma** el aporte. Todo lo confirmado
-pertenece a un único **fondo del evento**, que después se entrega a los **beneficiarios**.
+**metas de recaudación**, no como productos. Los invitados **declaran aportes** —totales o
+parciales— a un regalo o al **fondo general** y dejan un mensaje. Un administrador verifica
+**fuera del sistema** que el dinero llegó y **confirma** el aporte. Lo confirmado pertenece a
+un único **fondo del evento**, que se entrega a los **beneficiarios**.
+
+Núcleo del MVP [DECIDIDO]:
+
+```
+EVENTO → REGALOS → DECLARACIÓN DE APORTE → APORTE PENDIENTE → CONFIRMACIÓN ADMINISTRATIVA
+       → CONVERSIÓN AUD/GTQ → ASIGNACIÓN AL REGALO → EXCEDENTE AL FONDO GENERAL → AUDITORÍA
+```
 
 1. **No es una tienda.** Completar una meta no compra nada.
-2. **Un solo fondo por evento.** El progreso de cada regalo es una vista de las
-   *asignaciones* confirmadas hacia ese regalo, no una cuenta separada.
-3. **Moneda base AUD.** Las metas se expresan y calculan en AUD. El invitado puede
-   registrar su aporte en **AUD o GTQ**.
-4. **Sin pagos en línea en el MVP.** El sistema registra aportes **PENDIENTES** y un
-   administrador los **CONFIRMA** tras verificar la recepción del dinero.
-5. **Destino de fondos configurable.** La cuenta y el método real de transferencia aún no
-   están definidos (P2 [ABIERTO]); el sistema no asume ninguno.
-6. **Modelo genérico:** `EVENTO → REGALOS/METAS → APORTES → ASIGNACIONES → FONDO →
-   BENEFICIARIOS`. “Baby Shower” es solo el tipo del primer evento.
+2. **Un solo fondo por evento.** El progreso de un regalo es una vista de las *asignaciones*
+   confirmadas hacia ese regalo.
+3. **Moneda base AUD** para metas y contabilidad. El invitado declara en **AUD o GTQ**.
+4. **El dinero real se maneja fuera del sistema** en esta versión. Destino del primer evento:
+   cuenta en **Guatemala**, en **GTQ**, a nombre de la esposa del usuario. El **método** por
+   el cual los invitados entregan el dinero está **[ABIERTO]**.
+5. **Modelo genérico:** “Baby Shower” es solo el tipo del primer evento.
 
 ---
 
@@ -46,54 +47,63 @@ pertenece a un único **fondo del evento**, que después se entrega a los **bene
 | ID | Requisito |
 |----|-----------|
 | RF-01 | Ver la página del evento: título, descripción, beneficiarios, fecha, imagen. |
-| RF-02 | Ver la lista de regalos con **meta en AUD** (`AU$800`) y debajo `≈ Q___`, indicando que es aproximado y la fecha/hora de la tasa usada. |
+| RF-02 | Ver cada regalo con **meta en AUD** y `≈ Q___`, indicando que es aproximado y la fecha/hora de la tasa. |
 | RF-03 | Ver por regalo: **recaudado (confirmado)**, **faltante** y, por separado, lo **PENDIENTE**. |
 | RF-04 | Ver el estado del regalo: *disponible*, *con aportes*, *completado*. |
-| RF-05 | Registrar un aporte por el **faltante completo** de un regalo. |
-| RF-06 | Registrar un aporte **parcial** a un regalo. |
-| RF-07 | Registrar un aporte libre al **fondo general**. |
-| RF-08 | Elegir la **moneda del aporte: AUD o GTQ**, viendo siempre la equivalencia en la otra moneda. |
+| RF-05 | Declarar un aporte por el **faltante completo** de un regalo. |
+| RF-06 | Declarar un aporte **parcial** a un regalo. |
+| RF-07 | Declarar un aporte libre al **fondo general**. |
+| RF-08 | Elegir la **moneda: AUD o GTQ**, viendo la equivalencia en la otra moneda y el aviso de que el valor final se fija al confirmar. |
 | RF-09 | Escribir un **mensaje** para los beneficiarios. |
 | RF-10 | Elegir **nombre visible o anónimo**. |
-| RF-11 | Al registrar, recibir una **referencia única** y las **instrucciones de pago configuradas** para el evento (contenido [ABIERTO] hasta P2). |
-| RF-12 | Ver una confirmación de que su aporte quedó **PENDIENTE** de verificación. |
+| RF-11 | Si el regalo **ya está completado**, el botón sigue visible; antes de registrar se muestra: *“Este regalo ya fue completado. Tu aporte se agregará al fondo general del evento.”* y el invitado puede continuar. [DECIDIDO] C4 |
+| RF-12 | Al registrar, recibir una **referencia única** y el texto de instrucciones configurado para el evento (contenido [ABIERTO] mientras no se defina el método de entrega). |
+| RF-13 | Ver que su aporte quedó **PENDIENTE** de verificación. |
 
 ### Administrador del evento
 
 | ID | Requisito |
 |----|-----------|
-| RF-20 | Iniciar sesión de forma segura. |
-| RF-21 | Crear/editar evento: tipo, título, descripción, fecha, zona horaria, moneda base, monedas aceptadas para aportes. |
+| RF-20 | Iniciar sesión de forma segura (Supabase Auth). |
+| RF-21 | Crear/editar evento: tipo, título, descripción, fecha, zona horaria, moneda base, monedas de declaración. |
 | RF-22 | Registrar beneficiarios. |
-| RF-23 | **Configurar el destino de fondos** del evento (ver 4.3): texto de instrucciones, monedas en que se puede recibir. Sin datos bancarios predeterminados. |
+| RF-23 | Configurar el **destino de fondos** del evento (4.3). Sin datos bancarios en la página pública. |
 | RF-24 | Crear, editar, ordenar, ocultar y archivar regalos. |
-| RF-25 | Registrar/actualizar la **tasa de cambio vigente** en un único lugar. |
+| RF-25 | Registrar la **tasa vigente** (manual) en un único lugar, con historial. |
 | RF-26 | Listar aportes por estado; buscar por referencia. |
-| RF-27 | **Confirmar** un aporte: indicar **monto y moneda realmente recibidos**; el sistema fija la tasa y calcula AUD y la distribución (P5, P6). Mostrar la vista previa de la distribución antes de confirmar. |
-| RF-28 | **Rechazar** un aporte pendiente con motivo. |
-| RF-29 | Registrar directamente un aporte recibido por fuera del formulario (queda confirmado con el mismo cálculo). |
-| RF-30 | Moderar mensajes (si son públicos — P13). |
-| RF-31 | Exportar aportes, asignaciones y mensajes (CSV). |
-| RF-32 | Publicar / cerrar evento (cerrado = no acepta nuevos aportes). |
-| RF-33 | Ver el historial de auditoría de cada aporte y de cada tasa. |
+| RF-27 | **Confirmar**: ingresar monto y moneda recibidos; el sistema fija la tasa, calcula AUD y la distribución, y muestra una **vista previa** antes de confirmar. |
+| RF-28 | **Rechazar** un pendiente con motivo. |
+| RF-29 | **Anular** un aporte confirmado con motivo (C5); opcionalmente registrar el aporte corregido referenciando al anulado. |
+| RF-30 | Registrar directamente un aporte recibido por otro medio (sigue el mismo cálculo). |
+| RF-31 | Moderar mensajes (si son públicos — P13). |
+| RF-32 | Exportar aportes, asignaciones y mensajes (CSV). |
+| RF-33 | Publicar / cerrar evento. |
+| RF-34 | Ver el historial de auditoría de aportes, tasas y regalos. |
 
 ### Reglas de negocio
 
 | ID | Regla | Estado |
 |----|-------|--------|
-| RN-01 | Todo aporte pertenece a **un evento** y declara como destino **un regalo o el fondo general**. | [DECIDIDO] |
-| RN-02 | Estados del aporte: `PENDIENTE → CONFIRMADO` o `PENDIENTE → RECHAZADO`. **Solo CONFIRMADO cuenta como recaudado.** | [DECIDIDO] P3 |
-| RN-03 | Los PENDIENTES se muestran claramente con la etiqueta **“PENDIENTE”**. **No vencen** automáticamente en el MVP. | [DECIDIDO] P4 |
-| RN-04 | **Excedente:** al confirmar un aporte a un regalo, el monto en AUD se asigna al regalo hasta completar su faltante; el resto se asigna **automáticamente al fondo general**. Nada se pierde ni se rechaza. | [DECIDIDO] P5 |
-| RN-05 | La distribución de RN-04 se **guarda como asignaciones** trazables (ver 4.2). | [DECIDIDO] P5 |
-| RN-06 | La conversión que define el valor en AUD se **fija al CONFIRMAR** el aporte y se guarda con él: moneda original, monto original, tasa, monto AUD, fecha/hora de la tasa, fuente de la tasa. | [DECIDIDO] P6 |
-| RN-07 | Los aportes confirmados **no cambian** cuando cambia la tasa después. | [DECIDIDO] P6 |
-| RN-08 | El invitado puede registrar en **AUD o GTQ**; las metas siguen en AUD. | [DECIDIDO] P7 |
-| RN-09 | Un regalo está **completado** cuando la suma de sus asignaciones confirmadas = meta. | [DECIDIDO] |
-| RN-10 | Los aportes y asignaciones **nunca se borran**. | [PROPUESTA] |
-| RN-11 | El faltante se evalúa **en el momento de confirmar**, en orden de confirmación (no de registro). Ver conflicto C2. | [PROPUESTA] |
-| RN-12 | Registrar aportes a un regalo **completado**: ver conflicto C4. | [ABIERTO] |
-| RN-13 | Anonimato: el nombre de un aporte anónimo nunca aparece en vistas públicas. Alcance frente a beneficiarios: P8. | parcialmente [ABIERTO] |
+| RN-01 | Todo aporte pertenece a **un evento** y declara como destino **un regalo o el fondo general**. | DECIDIDO |
+| RN-02 | Estados: `PENDIENTE → CONFIRMADO`, `PENDIENTE → RECHAZADO`, `CONFIRMADO → ANULADO`. **Solo CONFIRMADO cuenta como recaudado.** | DECIDIDO P3, C5 |
+| RN-03 | PENDIENTE se muestra con la etiqueta **“PENDIENTE”**; sin vencimiento en el MVP. | DECIDIDO P4 |
+| RN-04 | **Excedente:** al confirmar, el `monto_aud` se asigna al regalo hasta su faltante; el resto va **automáticamente al fondo general**. | DECIDIDO P5 |
+| RN-05 | La distribución se guarda como **asignaciones** trazables. | DECIDIDO P5 |
+| RN-06 | La conversión se **fija al CONFIRMAR** y se guarda: moneda original, monto original, tasa, monto AUD, fecha/hora y fuente de la tasa. | DECIDIDO P6 |
+| RN-07 | Los aportes confirmados no cambian si la tasa cambia después. | DECIDIDO P6 |
+| RN-08 | El invitado declara en **AUD o GTQ**; metas en AUD. | DECIDIDO P7 |
+| RN-09 | Un regalo está **completado** cuando Σ asignaciones vigentes = meta. | DECIDIDO |
+| RN-10 | Los aportes **nunca se eliminan físicamente**. | DECIDIDO C5 |
+| RN-11 | El faltante se evalúa **en el orden en que el administrador confirma**, no en el orden de declaración. Cada confirmación registra en auditoría su número de orden y el faltante existente en ese momento. | DECIDIDO C2 |
+| RN-12 | Aporte a un regalo completado: se permite, con advertencia; al confirmar, todo va al fondo general como excedente. | DECIDIDO C4 |
+| RN-13 | **Sin tolerancia** por tipo de cambio: se registra el AUD real resultante del monto recibido; **no se completa artificialmente** la diferencia. El regalo queda con faltante y puede completarse con otro aporte. | DECIDIDO C3 |
+| RN-14 | **Anulación:** requiere motivo; guarda usuario, fecha/hora y referencia al aporte original. Las asignaciones del aporte anulado dejan de contar. | DECIDIDO C5 |
+| RN-15 | Al anular, **no se recalculan** las asignaciones de aportes confirmados después (su excedente permanece en el fondo general). El regalo puede reabrirse con faltante. | PROPUESTA — ver C10 |
+| RN-16 | Quién puede anular: rol `owner` del evento. | PROPUESTA (depende de P9) |
+| RN-17 | Anonimato: el nombre de un aporte anónimo nunca aparece en vistas públicas. Alcance frente a beneficiarios: P8. | parcialmente ABIERTO |
+
+Ejemplo C3 [DECIDIDO]: declarado AU$100 → recibido Q500 → tasa al confirmar 1 AUD = Q5.20
+→ **AU$96.15 confirmado** (500 / 5.20 = 96.1538…).
 
 ---
 
@@ -101,20 +111,16 @@ pertenece a un único **fondo del evento**, que después se entrega a los **bene
 
 | Área | Requisito |
 |------|-----------|
-| **Independencia** | Repositorio, cuentas de servicio, base de datos, dominio y secretos propios; nada compartido con otros proyectos. |
-| **Aislamiento por evento** | Todo dato lleva `event_id`; acceso filtrado en la base (p. ej. Row Level Security), no solo en la interfaz. |
-| **Aislamiento por usuario** | Roles por evento (`owner`, `admin`, `viewer`); preparado para agregar la capa *cuenta/organización* del SaaS. |
-| **Seguridad** | HTTPS; autenticación de administradores sin contraseñas débiles; validación de montos en servidor; anti-spam en el formulario público; secretos fuera del repositorio. |
-| **Trazabilidad** | Auditoría append-only; referencia única por aporte; asignaciones inmutables. |
-| **Consistencia** | La confirmación (tasa + conversión + asignaciones + cambio de estado) ocurre en **una sola transacción**, con bloqueo del regalo para que dos confirmaciones simultáneas no sobrepasen la meta. |
-| **Dinero** | Enteros en unidades menores + código ISO 4217; tasas en decimal de alta precisión; nunca `float`; redondeo único y documentado (8.3). |
-| **Multimoneda** | Agregar una moneda = datos (catálogo + tasa), no código. |
-| **Proveedor de pagos intercambiable** | Interfaz `PaymentProvider`. MVP: solo el proveedor **manual** (confirmación del administrador). Ningún proveedor real. |
-| **Móvil primero** | Invitados llegan por WhatsApp; páginas ligeras. |
-| **Idioma** | Español en el MVP; textos externalizados (P11). |
-| **Zonas horarias** | UTC en la base; se muestra en la zona del evento o del visitante. |
-| **Privacidad** | Datos mínimos de invitados; nunca datos de tarjeta; IP solo como hash. |
-| **Costo / operación** | Servicios administrados, capa gratuita o bajo costo. |
+| **Independencia** | Repositorio, proyecto Supabase, hosting, dominio y secretos propios. |
+| **Aislamiento por evento** | Todo dato lleva `event_id`; acceso controlado con **Row Level Security** de Supabase. |
+| **Aislamiento por usuario** | Roles por evento (`owner`, `admin`, `viewer`); preparado para una capa *organización* en el SaaS. |
+| **Seguridad** | HTTPS; Supabase Auth; validación de montos en servidor; la clave `service_role` nunca llega al navegador; anti-spam en el formulario público; secretos fuera del repositorio. |
+| **Trazabilidad** | Auditoría append-only; referencia única; asignaciones inmutables; orden de confirmación registrado. |
+| **Consistencia** | Confirmar y anular son **operaciones atómicas en la base** (función Postgres en una transacción, con bloqueo de fila del regalo). |
+| **Dinero** | Enteros en centavos + código ISO 4217; tasas `numeric` de alta precisión; nunca `float`; redondeo único documentado (8.3). |
+| **Monedas** | Solo AUD y GTQ en el MVP; catálogo en datos para agregar otras después (sin “multi-moneda avanzada”). |
+| **Proveedor de pagos** | Ninguno en el MVP. El modelo conserva un campo `metodo_registro` / `proveedor = manual` para no cerrar la puerta. |
+| **Móvil primero**, **español**, **UTC en base**, **datos mínimos de invitados**, **servicios administrados de bajo costo**. |
 
 ---
 
@@ -123,78 +129,57 @@ pertenece a un único **fondo del evento**, que después se entrega a los **bene
 ```
 Usuario ──< MiembroEvento >── Evento ──< Beneficiario
                                 │
-                                ├── DestinoFondos (configurable, P2)
+                                ├── DestinoFondos
                                 ├──< Regalo (meta en AUD)
                                 ├──< Aporte ──< Asignacion >── Regalo | FondoGeneral
-                                │       ├──< TransicionAporte
-                                │       └──< IntentoPago (proveedor "manual" en MVP)
-                                └── Fondo (derivado: Σ asignaciones confirmadas)
+                                │      ├──< TransicionAporte
+                                │      └── corrige_aporte_id → Aporte (anulado)
+                                └── Fondo (derivado)
 
-TasaCambio (histórica, con fuente)        RegistroAuditoria (append-only)
+TasaCambio (histórica)           RegistroAuditoria (append-only)
 ```
 
 ### 4.1 Aporte
 
-Guarda **dos momentos**: lo que el invitado **declaró** al registrar y lo que el
-administrador **confirmó**.
-
 | Grupo | Campos |
 |-------|--------|
-| Identidad | `id`, `referencia` (código corto legible), `evento_id` |
+| Identidad | `id`, `referencia`, `evento_id` |
 | Destino declarado | `regalo_id` (null = fondo general), `modalidad` (`completo` \| `parcial` \| `fondo_general`) |
-| Declarado (registro) | `monto_declarado`, `moneda_declarada` (AUD \| GTQ), `equivalente_aud_estimado`, `tasa_estimacion_id` — **solo informativo**, no cuenta para nada |
-| Confirmado (P6) | `monto_original`, `moneda_original` (lo realmente recibido), `tasa_valor`, `tasa_par` (p. ej. AUD/GTQ), `tasa_fecha_hora`, `tasa_fuente`, `tasa_id`, `monto_aud` |
-| Invitado | `nombre_aportante`, `contacto` (opcional), `visibilidad_nombre` (`publico` \| `anonimo`), `mensaje`, `mensaje_visible` |
-| Estado | `estado` (`PENDIENTE` \| `CONFIRMADO` \| `RECHAZADO`), `metodo_registro` (`formulario` \| `admin`) |
-| Trazabilidad | `creado_en`, `confirmado_en`, `confirmado_por`, `motivo_rechazo`, `ip_hash` |
+| Declarado | `monto_declarado`, `moneda_declarada` (AUD \| GTQ), `equivalente_aud_estimado`, `tasa_estimacion_id` — informativo |
+| Confirmado (P6) | `monto_original`, `moneda_original`, `tasa_valor`, `tasa_par`, `tasa_fecha_hora`, `tasa_fuente`, `tasa_id`, `monto_aud`, `orden_confirmacion` (secuencia por evento, C2), `confirmado_en`, `confirmado_por` |
+| Rechazo | `motivo_rechazo`, `rechazado_en`, `rechazado_por` |
+| Anulación (C5) | `motivo_anulacion`, `anulado_en`, `anulado_por` |
+| Corrección | `corrige_aporte_id` (si este aporte reemplaza a uno anulado) |
+| Invitado | `nombre_aportante`, `contacto` (opcional), `visibilidad_nombre`, `mensaje`, `mensaje_visible` |
+| Estado | `estado` (`PENDIENTE` \| `CONFIRMADO` \| `RECHAZADO` \| `ANULADO`), `metodo_registro` (`formulario` \| `admin`) |
+| Otros | `creado_en`, `ip_hash` |
 
-Si la moneda original es AUD: `tasa_valor = 1`, `tasa_fuente = "sin conversión"`.
+Si `moneda_original = AUD`: `tasa_valor = 1`, `tasa_fuente = "sin conversión"`.
 
-### 4.2 Asignacion (nueva — por P5)
+### 4.2 Asignacion
 
-Cómo se repartió el `monto_aud` de un aporte confirmado.
+`id, aporte_id, evento_id, destino_tipo (regalo | fondo_general), regalo_id, monto_aud,
+motivo (directo | excedente), faltante_antes, creado_en`.
 
-| Campo | Descripción |
-|-------|-------------|
-| `id`, `aporte_id`, `evento_id` | |
-| `destino_tipo` | `regalo` \| `fondo_general` |
-| `regalo_id` | si aplica |
-| `monto_aud` | en centavos |
-| `motivo` | `directo` (lo pedido) \| `excedente` (sobrante de un regalo) |
-| `faltante_antes` | faltante del regalo al momento de confirmar (evidencia del cálculo) |
-| `creado_en` | |
+- Invariante: Σ asignaciones de un aporte = `monto_aud` del aporte.
+- Solo cuentan las asignaciones de aportes en estado `CONFIRMADO` (las de un `ANULADO` se
+  conservan como historial, no se borran).
 
-Invariante: `Σ asignaciones.monto_aud = aporte.monto_aud`.
+### 4.3 DestinoFondos
 
-Ejemplo P5 (meta AU$800, faltan AU$20, confirmado AU$100):
-
-| destino | monto | motivo | faltante_antes |
-|---------|-------|--------|----------------|
-| regalo: Cochecito | AU$20.00 | directo | AU$20.00 |
-| fondo general | AU$80.00 | excedente | — |
-
-### 4.3 DestinoFondos (nuevo — por P2 [ABIERTO])
-
-Configuración por evento, **sin valores predeterminados**:
-
-- `instrucciones_publicas` (texto que ve el invitado tras registrar)
-- `monedas_recepcion` (en qué monedas puede llegar el dinero)
-- `titular_visible`, `datos_privados` (solo administradores; qué campos exactos: P2)
-- `activo`
-
-Hasta resolver P2 la página muestra un texto genérico (“Te enviaremos las instrucciones”) y
-la plataforma no publica datos bancarios.
+- Primer evento [DECIDIDO]: país **Guatemala**, moneda **GTQ**, titular: esposa del usuario.
+- `monedas_recepcion = [GTQ]` para el primer evento.
+- `instrucciones_publicas`: **[ABIERTO]** hasta definir el método de entrega; mientras tanto
+  texto genérico. Ningún número de cuenta en el repositorio ni en datos semilla.
+- Consecuencia: aunque el invitado declare en AUD, lo recibido será normalmente GTQ y se
+  convierte al confirmar (caso C3).
 
 ### 4.4 Otras entidades
 
-- **Evento** — `id, slug, tipo, titulo, descripcion, fecha, zona_horaria, moneda_base (AUD),
-  monedas_aporte ([AUD, GTQ]), estado (borrador | publicado | cerrado | archivado),
-  aporte_minimo (P16), mostrar_total_fondo`.
-- **Usuario**, **MiembroEvento** (`rol`), **Beneficiario** — sin cambios respecto a v0.1.
-- **Regalo** — `meta_aud` en centavos; recaudado/faltante **se derivan** de asignaciones.
-- **TasaCambio** — `par (base/cotizada), valor, fuente, vigente_desde, registrada_por,
-  alcance (global | evento)`. Nunca se sobrescribe.
-- **TransicionAporte**, **IntentoPago** (`proveedor = manual`), **RegistroAuditoria**.
+**Evento**, **Usuario**, **MiembroEvento**, **Beneficiario**, **Regalo** (`meta_aud` en
+centavos; recaudado/faltante derivados), **TasaCambio** (`par, valor, fuente,
+vigente_desde, registrada_por`; nunca se sobrescribe), **TransicionAporte**,
+**RegistroAuditoria** (`actor, accion, entidad, entidad_id, antes, despues, fecha`).
 
 ---
 
@@ -202,31 +187,27 @@ la plataforma no publica datos bancarios.
 
 ```
 Enlace → Página del evento
-  → Regalo: AU$800 / ≈ Q___ · Recaudado AU$525 · Faltan AU$275 · PENDIENTE AU$100
+  → Regalo: AU$800 / ≈ Q___ · Recaudado AU$525 · Faltan AU$275 · PENDIENTE ≈ AU$100
   → Elige: completo | parcial | fondo general
+       (si el regalo está completado → advertencia C4 → puede continuar)
   → Formulario: moneda (AUD | GTQ) · monto · nombre · ¿anónimo? · mensaje · contacto opc.
-       · Muestra equivalencia: "Q1,000 ≈ AU$192.31 (tasa del DD/MM HH:MM)"
-       · Aviso: "El valor final en AUD se fija cuando confirmemos la recepción"
-  → Resumen → Registrar → Aporte PENDIENTE + referencia
-  → Instrucciones configuradas del evento (P2)
-  → Página de agradecimiento: "Tu aporte está PENDIENTE de verificación"
+       · "Q1,000 ≈ AU$192.31 (tasa del DD/MM HH:MM). El valor final se fija al confirmar."
+  → Resumen → Registrar → PENDIENTE + referencia
+  → Instrucciones configuradas (genéricas mientras el método esté ABIERTO)
+  → Agradecimiento
 ```
 
 ## 6. Flujo del administrador
 
 ```
 1. Inicia sesión
-2. Crea evento, beneficiarios, destino de fondos (P2), tasa vigente, regalos
-3. Publica y comparte el enlace
-4. Ciclo de verificación:
-     Pendientes → verifica ingreso por referencia (fuera del sistema)
-       → Confirmar: ingresa monto y moneda recibidos
-            → el sistema muestra: tasa vigente, AUD equivalente,
-              distribución (regalo / excedente al fondo)
-            → Confirma → queda fijo (transacción única)
-       → o Rechazar con motivo
-5. Modera mensajes, actualiza la tasa cuando corresponda
-6. Cierra el evento, exporta, registra la entrega a beneficiarios
+2. Evento, beneficiarios, destino de fondos, tasa, regalos → Publicar
+3. Verificación (fuera del sistema) → Pendientes:
+     Confirmar → monto y moneda recibidos → vista previa (tasa, AUD, distribución)
+               → confirma (atómico, recibe número de orden)
+     Rechazar → motivo
+4. Corrección: Anular (motivo) → opcional: registrar aporte corregido que lo referencia
+5. Mensajes, tasa, exportación, cierre
 ```
 
 ---
@@ -234,180 +215,144 @@ Enlace → Página del evento
 ## 7. Flujo de los aportes
 
 ```
-REGISTRO (invitado)                      CONFIRMACIÓN (administrador, transacción única)
-─────────────────                        ───────────────────────────────────────────────
-monto_declarado + moneda                 monto_original + moneda_original (lo recibido)
-estimación AUD (informativa)             tasa vigente → snapshot (valor, fecha, fuente)
-estado = PENDIENTE                       monto_aud = convertir(original)
-                                         bloquear regalo → faltante actual
-                                         asignación directa = min(monto_aud, faltante)
-                                         excedente → asignación al fondo general
-                                         estado = CONFIRMADO + auditoría
+               ┌────────► RECHAZADO
+PENDIENTE ─────┤
+               └────────► CONFIRMADO ────────► ANULADO
 ```
 
-Estados: `PENDIENTE → CONFIRMADO` | `PENDIENTE → RECHAZADO`. Sin vencimiento (P4).
-Corrección de un confirmado por error: ver conflicto C5.
+**Confirmar** (función atómica en Postgres):
 
-**Totales derivados**
+1. Verificar estado `PENDIENTE` y permisos.
+2. Tomar la tasa vigente → snapshot (valor, par, fecha/hora, fuente).
+3. `monto_aud = redondear(monto_original / tasa)` (o igual si es AUD).
+4. Bloquear el regalo; calcular faltante con asignaciones vigentes.
+5. Asignación directa = `min(monto_aud, faltante)`; excedente → fondo general.
+6. Asignar `orden_confirmacion` (secuencia del evento); estado `CONFIRMADO`.
+7. Registrar transición y auditoría (incluye orden y faltante previo).
 
-- Recaudado de un regalo = Σ asignaciones a ese regalo (de aportes confirmados).
-- Faltante = meta − recaudado (nunca negativo).
-- Fondo total = Σ `monto_aud` de aportes confirmados.
-- Fondo general = Σ asignaciones al fondo general (directas + excedentes).
-- Pendiente de un regalo = Σ estimaciones AUD de pendientes declarados a ese regalo
-  (etiqueta “PENDIENTE”, valor aproximado si fue declarado en GTQ).
+**Anular** (función atómica): verificar `CONFIRMADO` y rol; guardar motivo, usuario y
+fecha/hora; estado `ANULADO`; auditoría. No modifica otros aportes (RN-15).
+
+**Totales derivados** (solo aportes `CONFIRMADO`): recaudado por regalo, faltante (≥ 0),
+fondo total, fondo general. Pendientes: suma de estimaciones, mostrada como “PENDIENTE ≈”.
 
 ---
 
 ## 8. Manejo de AUD y GTQ
 
-### 8.1 Principios
-
-1. AUD es la moneda base; las metas solo existen en AUD.
-2. Un único servicio `convertir(monto, de, a) → {monto, tasa}` usando la tabla `TasaCambio`.
-   Ninguna tasa escrita en código ni repetida.
-3. **Dos usos de la tasa:**
-   - *Visualización y estimación* (páginas, formulario): tasa vigente, marcada con “≈”.
-   - *Contabilización* (confirmación): tasa vigente **al confirmar**, guardada como snapshot
-     en el aporte. [DECIDIDO] P6.
+1. AUD es base; las metas solo existen en AUD.
+2. Un único servicio de conversión con la tabla `TasaCambio`; ninguna tasa en el código.
+3. Tasa **de visualización/estimación** (vigente, con “≈”) y tasa **contable** (vigente al
+   confirmar, snapshot).
 4. Historial: una tasa nueva se agrega; nunca modifica aportes confirmados.
 
-### 8.2 Convención de la tasa [PROPUESTA]
+**8.2 Convención [PROPUESTA]:** `1 AUD = X GTQ`. GTQ→AUD: `/ X`; AUD→GTQ: `× X`.
 
-Se guarda como **1 AUD = X GTQ** (como lo expresa el usuario). Conversiones:
+**8.3 Redondeo [PROPUESTA]:** una sola vez al centavo, *half-up*, en la contabilización
+(Q350/5.20 = AU$67.31; Q500/5.20 = AU$96.15). Visualización GTQ a quetzal entero con “≈”.
+Las asignaciones usan el `monto_aud` ya redondeado.
 
-- GTQ → AUD: `aud = gtq / X`
-- AUD → GTQ: `gtq = aud × X`
-
-Ejemplo P6: Q350 / 5.20 = 67.3077 → **AU$67.31**.
-
-### 8.3 Redondeo [PROPUESTA]
-
-- Contabilización: se redondea **una sola vez** al centavo, *half-up* (67.3077 → 67.31).
-- Visualización en GTQ: redondeo a quetzal entero, siempre con “≈”.
-- Las asignaciones se calculan sobre el `monto_aud` ya redondeado (sin nuevos redondeos).
-
-### 8.4 Fuente de la tasa — [ABIERTO]
-
-Manual, automática (API) o híbrida (sección 12 de la v0.1 se mantiene). El modelo guarda
-`fuente` en cualquier caso. Para el MVP basta con **manual** si no se decide otra cosa; la
-decisión puede tomarse durante PLAN sin afectar el modelo.
+**8.4 Fuente de la tasa:** manual en el MVP (RF-25). Tasa automática por API queda fuera
+(“multi-moneda avanzada”) — [PROPUESTA], confirmar.
 
 ---
 
 ## 9. Qué se almacena
 
-**Se almacena:** eventos, miembros, beneficiarios, destino de fondos, regalos, aportes (con
-declarado y confirmado), **asignaciones**, transiciones, tasas históricas, mensajes,
-auditoría.
-
-**Se deriva:** recaudado, faltante, completado, fondo total, fondo general, pendientes,
-conversiones de visualización.
-
+**Se almacena:** eventos, miembros, beneficiarios, destino de fondos (sin números de cuenta
+mientras no se decida), regalos, aportes (declarado, confirmado, rechazo, anulación),
+asignaciones, transiciones, tasas, mensajes, auditoría.
+**Se deriva:** recaudado, faltante, completado, fondos, pendientes, conversiones visuales.
 **No se almacena:** datos de tarjeta o credenciales bancarias, IP en claro, documentos de
-identidad. Comprobantes de depósito: [ABIERTO] (depende de P2).
+identidad. Comprobantes: [ABIERTO] (depende del método de entrega).
 
 ---
 
-## 10. Fuera del MVP
+## 10. Fuera del MVP [DECIDIDO]
 
-- Pagos en línea y cualquier proveedor real (tarjeta, PayPal, Stripe, locales).
-- Método de transferencia específico y datos bancarios concretos (P2).
-- Vencimiento de pendientes y reglas adicionales (P4).
-- Compra de productos / tiendas; desembolso automático; reembolsos.
-- Registro autoservicio de organizadores / SaaS / cobros de comisión.
-- Cuentas de invitado; notificaciones automáticas; apps nativas; multi-idioma en UI.
-- Tasa automática por API (salvo que se decida en PLAN).
+- Pagos reales y transferencias: Stripe, PayPal, Mercado Pago, bancos, cualquier proveedor.
+- Método de entrega del dinero (se definirá después).
+- Telegram, WhatsApp API, IA, automatizaciones, scraping de tiendas, compras automáticas.
+- Multi-moneda avanzada (solo AUD y GTQ; tasa manual).
+- Vencimiento de pendientes; tolerancia por tipo de cambio.
+- SaaS/autoservicio, cuentas de invitado, notificaciones, multi-idioma en UI, desembolsos
+  automáticos, reembolsos.
 
 ---
 
 ## 11. Riesgos antes de integrar pagos
 
-Sin cambios respecto a v0.1: regulación de intermediación/remesas y prevención de lavado
-(Guatemala y Australia), disponibilidad de procesadores por país, comisiones y diferencial
-cambiario, contracargos, alcance PCI, conciliación, quién es el comerciante legal en el
-SaaS. Se suma:
-
-- **Diferencia entre AUD contabilizado y AUD real recibido:** con P6 el AUD se fija con la
-  tasa de referencia al confirmar; lo que los beneficiarios reciban en Australia dependerá
-  de la tasa y comisiones del envío real. El sistema debe comunicar que los montos AUD son
-  **contables**, no garantizados (y el desembolso real se registra aparte).
+Sin cambios: regulación de intermediación/remesas y prevención de lavado (Guatemala y
+Australia), disponibilidad de procesadores por país, comisiones y diferencial cambiario,
+contracargos, PCI, conciliación, comerciante legal en el SaaS, y diferencia entre el AUD
+contable y lo que realmente reciban los beneficiarios en Australia al convertir desde GTQ.
 
 ---
 
-## 12. Arquitectura — [ABIERTO] P12
+## 12. Arquitectura [DECIDIDO: Next.js + Supabase]
 
-Capas y puntos de extensión (sin cambios): dominio puro · aplicación (casos de uso) ·
-infraestructura (`Repositorio`, `PaymentProvider` [manual], `RateProvider` [manual]) · web.
+| Capa | Tecnología / ubicación |
+|------|------------------------|
+| Web (página pública y panel) | Next.js (App Router), TypeScript |
+| Dominio puro | `src/domain` — TypeScript sin dependencias de Next ni Supabase |
+| Casos de uso | `src/application` |
+| Base de datos | Supabase PostgreSQL; migraciones versionadas en `supabase/migrations` |
+| Autenticación | Supabase Auth (administradores) |
+| Autorización | Row Level Security por `event_id` y rol |
+| Operaciones atómicas | Funciones Postgres (`confirmar_aporte`, `anular_aporte`) invocadas vía RPC |
+| Archivos | Supabase Storage (solo si se necesitan imágenes) |
+| Pagos | Ninguno |
 
-Opciones de stack siguen abiertas: **A** Next.js + Postgres administrado + ORM; **B** Supabase
-(Auth + Postgres + RLS) + frontend; **C** estático + Sheets/Make (no recomendada). Es la
-decisión que bloquea el inicio de BUILD (ver `PLAN.md`, Fase 0).
+Nota de diseño: las reglas de dinero existen en el dominio TypeScript (probadas) y la
+confirmación atómica en Postgres. Para evitar que diverjan, las pruebas de la Fase 2 deben
+ejecutar los mismos casos de aceptación contra ambas. [PROPUESTA]
+
+Hosting de Next.js: [ABIERTO] (no bloquea las Fases 0–2).
 
 ---
 
-## 13. Estructura del repositorio `listas-regalos` [PROPUESTA]
+## 13. Estructura del repositorio [PROPUESTA]
 
 ```
 /
 ├── README.md
-├── docs/
-│   ├── SPEC.md · PLAN.md · DECISIONES.md
-│   └── adr/                        (una decisión técnica por archivo)
+├── docs/  SPEC.md · PLAN.md · DECISIONES.md · adr/
 ├── src/
-│   ├── domain/
-│   │   ├── money/                  Money, Currency, redondeo
-│   │   ├── fx/                     convertir(), snapshot de tasa
-│   │   ├── contributions/          estados, confirmación, asignación (P5)
-│   │   ├── gifts/                  progreso derivado
-│   │   └── events/
-│   ├── application/                registrarAporte, confirmarAporte, rechazarAporte…
-│   ├── infrastructure/
-│   │   ├── db/                     esquema, migraciones, repositorios
-│   │   ├── payments/manual/
-│   │   └── rates/manual/
-│   └── web/                        página pública + panel admin
-├── db/seed/                        evento ficticio para desarrollo
-├── tests/ (domain/, application/, e2e/)
+│   ├── domain/  money/ · fx/ · contributions/ · gifts/ · events/
+│   ├── application/
+│   ├── infrastructure/  supabase/ (clientes, repositorios)
+│   └── app/  (rutas Next.js: /e/[slug], /admin)
+├── supabase/  migrations/ · seed.sql (datos ficticios)
+├── tests/  domain/ · integration/ · e2e/
 ├── .env.example
 └── .github/workflows/ci.yml
 ```
 
 ---
 
-## 14. Conflictos y ajustes que producen las decisiones
+## 14. Conflictos y su estado
 
-| # | Conflicto | Tratamiento en esta SPEC |
-|---|-----------|--------------------------|
-| **C1** | **P5 + P6:** la distribución regalo/excedente depende del monto en AUD, y en un aporte en GTQ ese monto **solo se conoce al confirmar**. El invitado no puede saber con certeza cuánto irá al regalo y cuánto al fondo. | La distribución se calcula **en la confirmación**. Al registrar solo se muestra una estimación con aviso. |
-| **C2** | **Orden de los aportes:** si A registra primero pero B se confirma primero, B completa la meta y el excedente de A va al fondo general. | Se aplica el **orden de confirmación** (RN-11). [PROPUESTA] — confirmar si es aceptable. |
-| **C3** | **“Regalar completo” en GTQ:** el invitado paga el faltante estimado en quetzales; si la tasa cambia antes de confirmar, puede quedar **un pequeño faltante** (p. ej. AU$0.40) o un pequeño excedente. El excedente ya está resuelto por P5; el faltante no. | [ABIERTO] Opciones: (a) aceptar el faltante residual (la meta queda abierta por centavos); (b) tolerancia configurable (p. ej. ≤ AU$1 marca el regalo como completado sin inventar dinero: la meta se considera cumplida pero el recaudado real queda registrado); (c) el administrador decide al confirmar. |
-| **C4** | **Aportes a regalos completados:** con P5, cualquier aporte a un regalo completo iría 100 % al fondo general. | [ABIERTO] Opciones: (a) ocultar el botón y sugerir el fondo general; (b) permitirlo con aviso “irá al fondo general”. |
-| **C5** | **Corrección de errores:** P3/P4 solo definen PENDIENTE, CONFIRMADO, RECHAZADO. Si el administrador confirma con un monto equivocado, no hay forma de corregir sin borrar (y RN-10 lo prohíbe). | [ABIERTO] Propuesta mínima: estado **ANULADO** (solo `owner`, con motivo) que revierte las asignaciones de ese aporte y permite registrar uno correcto; **no** se recalculan aportes posteriores. Alternativa: no incluirlo y corregir en la base con auditoría manual. |
-| **C6** | **PENDIENTE visible (P4) + GTQ (P7):** el monto pendiente de un aporte en GTQ no tiene valor AUD fijo. | Se muestra como “PENDIENTE ≈ AU$X” usando la tasa vigente; no afecta recaudado. |
-| **C7** | **Pendientes que exceden la meta:** con varios pendientes, la suma puede superar el faltante; sin vencimiento (P4) se acumulan. | Se permite; P5 resuelve el exceso al confirmar. El administrador rechaza manualmente los que nunca lleguen. |
-| **C8** | **P2 abierto vs P6/P7:** P6 habla de “moneda original”, pero lo que se recibe depende de la cuenta. Si la cuenta es en USD o el invitado declaró AUD y deposita GTQ, la moneda recibida difiere de la declarada, y podría requerirse una tasa distinta de AUD/GTQ. | El modelo separa **declarado** y **recibido** y la tabla de tasas acepta cualquier par. Qué monedas se reciben queda en `DestinoFondos.monedas_recepcion` — [ABIERTO] P2. |
-| **C9** | **P1 vs entorno de trabajo:** la integración de GitHub de esta sesión no tiene permiso para crear repositorios (error 403). | El usuario debe crear `listas-regalos` manualmente; después se agrega a la sesión y se trasladan los documentos. |
+| # | Tema | Estado |
+|---|------|--------|
+| C1 | Distribución de aportes en GTQ solo se conoce al confirmar | Resuelto: estimación al declarar, cálculo al confirmar |
+| C2 | Orden de asignación | **DECIDIDO:** orden de confirmación, registrado en auditoría |
+| C3 | Faltante residual por tipo de cambio | **DECIDIDO:** sin tolerancia; se registra el monto real |
+| C4 | Aportes a regalos completados | **DECIDIDO:** botón visible + advertencia; va al fondo general |
+| C5 | Corrección de errores | **DECIDIDO:** estado ANULADO con motivo, usuario, fecha/hora, referencia |
+| C6 | Pendientes en GTQ | Resuelto: “PENDIENTE ≈ AU$X” |
+| C7 | Pendientes que exceden la meta | Resuelto: permitido; P5 resuelve al confirmar |
+| C8 | Moneda declarada vs recibida | Resuelto por P2: se recibe GTQ; modelo separa declarado/recibido |
+| C9 | Creación del repositorio | Pendiente: el usuario lo crea manualmente |
+| **C10** | **Nuevo:** al anular un aporte que completaba un regalo, el regalo se reabre, pero los excedentes de aportes confirmados después ya quedaron en el fondo general y no se mueven (RN-15). | [PROPUESTA] aceptar este comportamiento; confirmar |
 
 ---
 
 ## 15. Preguntas abiertas
 
-**Siguen abiertas**
-
-- **P2.** Cuenta de destino y método real de transferencia (determina instrucciones,
-  monedas de recepción y datos a guardar; C8).
-- **P8.** Anonimato: ¿solo público o también frente a los beneficiarios?
-- **P9.** Administradores y permisos.
-- **P10.** Acceso a la página (pública / enlace no listado / código) y si se muestran montos
-  individuales.
-- **P11.** Idioma(s).
-- **P12.** Stack (A o B). **Bloquea BUILD.**
-- **P13.** Mensajes públicos o privados; moderación.
-- **P14.** Fecha del Baby Shower y fecha de publicación.
-- **P15.** Contenido de la lista (quién la arma, imágenes, datos visibles de la familia).
-- **P16.** Aporte mínimo.
-- **Fuente de la tasa** (manual / API / híbrida) — 8.4.
-
-**Nuevas por los conflictos:** C2 (orden de confirmación), C3 (faltante residual), C4
-(aportes a regalos completados), C5 (anulación).
+- **Método de entrega del dinero** (P2 restante) — bloquea solo la publicación real.
+- **P8** anonimato frente a beneficiarios · **P9** administradores (y quién anula, RN-16) ·
+  **P10** acceso a la página y visibilidad de montos individuales · **P11** idioma ·
+  **P13** mensajes públicos/privados · **P14** fecha del evento · **P15** contenido de la
+  lista · **P16** aporte mínimo.
+- **C10** comportamiento al anular.
+- Hosting de Next.js.

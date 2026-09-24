@@ -1,7 +1,8 @@
 # listas-regalos — PLAN propuesto
 
-> **Estado:** PROPUESTA v0.1 (2026-09-24), pendiente de aprobación. Basado en `SPEC.md` v0.2.
-> No se inicia BUILD hasta que el usuario lo apruebe.
+> **Estado:** APROBADO v0.2 (2026-09-24). Basado en `SPEC.md` v0.3.
+> BUILD solo por fases y solo después de: repositorio `listas-regalos` verificado +
+> documentación trasladada en un commit separado + revisión del usuario.
 
 ## Principios del plan
 
@@ -18,13 +19,13 @@
 
 ## Puertas de decisión
 
-| Puerta | Decisiones necesarias | Bloquea |
-|--------|-----------------------|---------|
-| **G0** | Repositorio `listas-regalos` creado por el usuario (C9) · **P12 stack** (A o B) | Fase 0 |
-| **G1** | **C2** orden de confirmación · **C3** faltante residual · **C5** anulación | Cierre de Fase 1 |
-| **G2** | **C4** aportes a regalos completados · **P8** anonimato · **P10** acceso · **P13** mensajes · **P16** mínimo | Fase 4 |
-| **G3** | **P9** administradores | Fase 3 (autenticación/roles) |
-| **G4** | **P2** destino de fondos y método · **P14** fecha · **P15** contenido · **P11** idioma · fuente de tasa | Fase 6 (publicación real) |
+| Puerta | Decisiones | Estado |
+|--------|------------|--------|
+| **G0** | Repositorio `listas-regalos` creado y verificado · stack | Stack DECIDIDO (Next.js + Supabase); repositorio pendiente |
+| **G1** | C2 · C3 · C5 | DECIDIDAS · C10 en propuesta (no bloquea) |
+| **G2** | C4 · P8 anonimato · P10 acceso · P13 mensajes · P16 mínimo | C4 DECIDIDA; resto ABIERTO — bloquea Fase 4 |
+| **G3** | P9 administradores (y quién anula) | ABIERTO — bloquea Fase 3 |
+| **G4** | Método de entrega del dinero · P14 fecha · P15 contenido · P11 idioma · hosting | ABIERTO — bloquea Fase 6 |
 
 ---
 
@@ -46,7 +47,7 @@ proyectos.
 
 - `Money` (entero en centavos + moneda), catálogo de monedas (AUD, GTQ).
 - `convertir()` con la convención **1 AUD = X GTQ** y redondeo half-up al centavo (SPEC 8.2–8.3).
-- Máquina de estados del aporte: PENDIENTE → CONFIRMADO | RECHAZADO (+ ANULADO si G1 lo aprueba).
+- Máquina de estados: PENDIENTE → CONFIRMADO | RECHAZADO; CONFIRMADO → ANULADO.
 - `confirmarAporte()` puro: recibe aporte, monto recibido, tasa y faltante actual → devuelve
   snapshot de tasa, `monto_aud` y **asignaciones** (directa + excedente, P5).
 - Cálculo derivado: recaudado, faltante, completado, fondo total, fondo general, pendientes.
@@ -59,20 +60,26 @@ proyectos.
 | P5 | meta 800, recaudado 780, aporte AU$100 | AU$20 regalo (directo) + AU$80 fondo (excedente) |
 | Exacto | faltante 275, aporte AU$275 | AU$275 regalo, 0 excedente, regalo completado |
 | Fondo general | aporte AU$50 sin regalo | AU$50 fondo general (directo) |
-| Regalo completo | faltante 0, aporte AU$40 | AU$40 fondo (excedente) — sujeto a C4 |
+| C4 regalo completo | faltante 0, aporte AU$40 | AU$40 fondo general (excedente) |
 | Inmutabilidad | cambia la tasa después | aportes confirmados sin cambios |
 | Invariante | cualquier confirmación | Σ asignaciones = monto_aud; faltante nunca negativo |
 | Pendiente | aporte PENDIENTE | no suma a recaudado; sí aparece en pendientes |
-| C3 | “completo” en GTQ con tasa movida | según decisión G1 |
+| C3 | declarado AU$100, recibido Q500, tasa 5.20 | AU$96.15 confirmado; faltante residual AU$3.85; sin completar artificialmente |
+| C2 | A declara antes que B; B se confirma primero | B llena el faltante; excedente de A al fondo; orden 1 = B, 2 = A |
+| C5 | anular aporte confirmado | estado ANULADO con motivo/usuario/fecha; sus asignaciones dejan de contar; nada se borra |
+| C10 | anular aporte que completaba el regalo | regalo reabierto; excedentes posteriores permanecen en el fondo |
 
 **Terminado cuando:** todas las pruebas pasan; cobertura completa de `domain/`.
 
 ### Fase 2 — Persistencia y aislamiento
 
-- Esquema y migraciones: evento, miembro, beneficiario, destino de fondos, regalo, aporte,
+- Proyecto Supabase propio (desarrollo); migraciones en `supabase/migrations`.
+- Esquema: evento, miembro, beneficiario, destino de fondos, regalo, aporte,
   asignación, transición, intento de pago, tasa, auditoría.
 - Aislamiento por evento en la base (RLS o equivalente según stack).
-- Caso de uso `confirmarAporte` en **una transacción** con bloqueo del regalo.
+- Funciones Postgres atómicas `confirmar_aporte` y `anular_aporte` (bloqueo de fila del regalo, secuencia de orden por evento).
+- RLS por `event_id` y rol; clave `service_role` solo en servidor.
+- Los casos de aceptación de Fase 1 se ejecutan también contra las funciones SQL (evitar divergencia).
 - Auditoría append-only; referencias únicas; datos semilla ficticios.
 
 **Terminado cuando:** pruebas de integración cubren: confirmaciones concurrentes sobre el
@@ -114,7 +121,7 @@ aparece como PENDIENTE en la página y en el panel.
 
 ### Fase 6 — Preparación del evento real (tras G4)
 
-- Configurar `DestinoFondos` con lo decidido en P2 (sin integrar pagos).
+- Configurar `DestinoFondos` (Guatemala, GTQ) con el método de entrega que se decida (sin integrar pagos).
 - Cargar la lista real, tasa real, textos, dominio y hosting de producción.
 - Publicar y compartir el enlace.
 
@@ -122,8 +129,9 @@ aparece como PENDIENTE en la página y en el panel.
 
 ## Qué no incluye este plan
 
-Pagos en línea, proveedores reales, vencimiento de pendientes, tasa automática (salvo
-decisión), SaaS/autoservicio, notificaciones, multi-idioma en UI, desembolsos automáticos.
+Pagos reales, transferencias, Stripe, PayPal, Mercado Pago, bancos, Telegram, WhatsApp API,
+IA, automatizaciones, scraping de tiendas, compras automáticas, multi-moneda avanzada,
+vencimiento de pendientes, tolerancia cambiaria, SaaS/autoservicio, notificaciones.
 
 ## Riesgos del plan
 
