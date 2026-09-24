@@ -1,6 +1,7 @@
 # listas-regalos — Especificación
 
-> **Estado:** SPEC v0.3 (2026-09-24). Incorpora P1–P7, P2 (parcial), C2–C5 y el stack.
+> **Estado:** SPEC v0.4 (2026-09-24). Incorpora P1–P7, P2 (parcial), C2–C5, C10, P9 (anulación),
+> tasa manual y el stack.
 > Siguiente etapa: BUILD por fases según `PLAN.md`, **después** de trasladar la
 > documentación al repositorio `listas-regalos` y verificar ese estado.
 >
@@ -69,11 +70,12 @@ EVENTO → REGALOS → DECLARACIÓN DE APORTE → APORTE PENDIENTE → CONFIRMAC
 | RF-22 | Registrar beneficiarios. |
 | RF-23 | Configurar el **destino de fondos** del evento (4.3). Sin datos bancarios en la página pública. |
 | RF-24 | Crear, editar, ordenar, ocultar y archivar regalos. |
-| RF-25 | Registrar la **tasa vigente** (manual) en un único lugar, con historial. |
+| RF-25 | Registrar la **tasa de referencia** AUD→GTQ (manual) en un único lugar, con historial. Se usa para mostrar `≈ Q` y como valor sugerido al confirmar. |
 | RF-26 | Listar aportes por estado; buscar por referencia. |
-| RF-27 | **Confirmar**: ingresar monto y moneda recibidos; el sistema fija la tasa, calcula AUD y la distribución, y muestra una **vista previa** antes de confirmar. |
+| RF-27 | **Confirmar**: ingresar monto y moneda recibidos y, si la moneda no es AUD, **la tasa AUD→GTQ** (precargada con la tasa de referencia, editable). El sistema calcula AUD y la distribución y muestra una **vista previa** antes de confirmar. [DECIDIDO] tasa manual |
 | RF-28 | **Rechazar** un pendiente con motivo. |
-| RF-29 | **Anular** un aporte confirmado con motivo (C5); opcionalmente registrar el aporte corregido referenciando al anulado. |
+| RF-29 | **Anular** un aporte confirmado con motivo (C5) — **solo el dueño del evento** (P9); opcionalmente registrar el aporte corregido referenciando al anulado. |
+| RF-35 | Ver el **historial de un regalo**: confirmaciones, excedentes, anulaciones y cómo cambió su recaudado/faltante, para explicar por qué un regalo completado volvió a tener faltante (C10). |
 | RF-30 | Registrar directamente un aporte recibido por otro medio (sigue el mismo cálculo). |
 | RF-31 | Moderar mensajes (si son públicos — P13). |
 | RF-32 | Exportar aportes, asignaciones y mensajes (CSV). |
@@ -98,8 +100,9 @@ EVENTO → REGALOS → DECLARACIÓN DE APORTE → APORTE PENDIENTE → CONFIRMAC
 | RN-12 | Aporte a un regalo completado: se permite, con advertencia; al confirmar, todo va al fondo general como excedente. | DECIDIDO C4 |
 | RN-13 | **Sin tolerancia** por tipo de cambio: se registra el AUD real resultante del monto recibido; **no se completa artificialmente** la diferencia. El regalo queda con faltante y puede completarse con otro aporte. | DECIDIDO C3 |
 | RN-14 | **Anulación:** requiere motivo; guarda usuario, fecha/hora y referencia al aporte original. Las asignaciones del aporte anulado dejan de contar. | DECIDIDO C5 |
-| RN-15 | Al anular, **no se recalculan** las asignaciones de aportes confirmados después (su excedente permanece en el fondo general). El regalo puede reabrirse con faltante. | PROPUESTA — ver C10 |
-| RN-16 | Quién puede anular: rol `owner` del evento. | PROPUESTA (depende de P9) |
+| RN-15 | Al anular, el regalo **se reabre** según el monto que deja de contar; **no se recalculan ni modifican** aportes históricos ni se mueven retroactivamente los excedentes posteriores enviados al fondo general. La auditoría registra el recaudado/faltante del regalo antes y después de la anulación. | DECIDIDO C10 |
+| RN-16 | Solo el rol `owner` del evento puede anular. Otros administradores no. | DECIDIDO P9 (MVP) |
+| RN-18 | La tasa contable es **manual**: la introduce el administrador al confirmar (precargada con la de referencia). Se guarda en el aporte con fuente `manual` y fecha/hora. Sin API automática. | DECIDIDO |
 | RN-17 | Anonimato: el nombre de un aporte anónimo nunca aparece en vistas públicas. Alcance frente a beneficiarios: P8. | parcialmente ABIERTO |
 
 Ejemplo C3 [DECIDIDO]: declarado AU$100 → recibido Q500 → tasa al confirmar 1 AUD = Q5.20
@@ -146,7 +149,7 @@ TasaCambio (histórica)           RegistroAuditoria (append-only)
 | Identidad | `id`, `referencia`, `evento_id` |
 | Destino declarado | `regalo_id` (null = fondo general), `modalidad` (`completo` \| `parcial` \| `fondo_general`) |
 | Declarado | `monto_declarado`, `moneda_declarada` (AUD \| GTQ), `equivalente_aud_estimado`, `tasa_estimacion_id` — informativo |
-| Confirmado (P6) | `monto_original`, `moneda_original`, `tasa_valor`, `tasa_par`, `tasa_fecha_hora`, `tasa_fuente`, `tasa_id`, `monto_aud`, `orden_confirmacion` (secuencia por evento, C2), `confirmado_en`, `confirmado_por` |
+| Confirmado (P6) | `monto_original`, `moneda_original`, `tasa_valor`, `tasa_par`, `tasa_fecha_hora`, `tasa_fuente` (`manual` \| `sin conversión`), `tasa_referencia_id` (tasa sugerida en ese momento, si la hubo), `monto_aud`, `orden_confirmacion` (secuencia por evento, C2), `confirmado_en`, `confirmado_por` |
 | Rechazo | `motivo_rechazo`, `rechazado_en`, `rechazado_por` |
 | Anulación (C5) | `motivo_anulacion`, `anulado_en`, `anulado_por` |
 | Corrección | `corrige_aporte_id` (si este aporte reemplaza a uno anulado) |
@@ -223,15 +226,20 @@ PENDIENTE ─────┤
 **Confirmar** (función atómica en Postgres):
 
 1. Verificar estado `PENDIENTE` y permisos.
-2. Tomar la tasa vigente → snapshot (valor, par, fecha/hora, fuente).
+2. Tomar la tasa **introducida por el administrador** (precargada con la de referencia) → snapshot (valor, par, fecha/hora, fuente `manual`).
 3. `monto_aud = redondear(monto_original / tasa)` (o igual si es AUD).
 4. Bloquear el regalo; calcular faltante con asignaciones vigentes.
 5. Asignación directa = `min(monto_aud, faltante)`; excedente → fondo general.
 6. Asignar `orden_confirmacion` (secuencia del evento); estado `CONFIRMADO`.
 7. Registrar transición y auditoría (incluye orden y faltante previo).
 
-**Anular** (función atómica): verificar `CONFIRMADO` y rol; guardar motivo, usuario y
-fecha/hora; estado `ANULADO`; auditoría. No modifica otros aportes (RN-15).
+**Anular** (función atómica): verificar `CONFIRMADO` y rol **owner**; guardar motivo, usuario y
+fecha/hora; estado `ANULADO`; auditoría con recaudado/faltante del regalo antes y después.
+No modifica otros aportes ni mueve excedentes posteriores (RN-15, C10).
+
+**Historial del regalo (C10):** se reconstruye de asignaciones + transiciones ordenadas en el
+tiempo. Ejemplo: “#1 confirmado AU$500 → #2 confirmado AU$300 → completado → #3 confirmado
+AU$100 (excedente al fondo) → #2 anulado (motivo) → faltan AU$300”.
 
 **Totales derivados** (solo aportes `CONFIRMADO`): recaudado por regalo, faltante (≥ 0),
 fondo total, fondo general. Pendientes: suma de estimaciones, mostrada como “PENDIENTE ≈”.
@@ -242,8 +250,8 @@ fondo total, fondo general. Pendientes: suma de estimaciones, mostrada como “P
 
 1. AUD es base; las metas solo existen en AUD.
 2. Un único servicio de conversión con la tabla `TasaCambio`; ninguna tasa en el código.
-3. Tasa **de visualización/estimación** (vigente, con “≈”) y tasa **contable** (vigente al
-   confirmar, snapshot).
+3. Tasa **de referencia** (manual, con historial; se usa para “≈” y como sugerencia) y tasa
+   **contable** (introducida por el administrador al confirmar, guardada en el aporte).
 4. Historial: una tasa nueva se agrega; nunca modifica aportes confirmados.
 
 **8.2 Convención [PROPUESTA]:** `1 AUD = X GTQ`. GTQ→AUD: `/ X`; AUD→GTQ: `× X`.
@@ -252,8 +260,12 @@ fondo total, fondo general. Pendientes: suma de estimaciones, mostrada como “P
 (Q350/5.20 = AU$67.31; Q500/5.20 = AU$96.15). Visualización GTQ a quetzal entero con “≈”.
 Las asignaciones usan el `monto_aud` ya redondeado.
 
-**8.4 Fuente de la tasa:** manual en el MVP (RF-25). Tasa automática por API queda fuera
-(“multi-moneda avanzada”) — [PROPUESTA], confirmar.
+**8.4 Fuente de la tasa [DECIDIDO]:** manual en el MVP. Sin API automática; podrá agregarse
+después como otra fuente sin cambiar el modelo.
+
+**8.5 [Decisión técnica menor, reversible]:** introducir una tasa distinta al confirmar **no**
+cambia automáticamente la tasa de referencia mostrada al público; el administrador la
+actualiza en su propia pantalla si lo desea.
 
 ---
 
@@ -343,16 +355,16 @@ Hosting de Next.js: [ABIERTO] (no bloquea las Fases 0–2).
 | C7 | Pendientes que exceden la meta | Resuelto: permitido; P5 resuelve al confirmar |
 | C8 | Moneda declarada vs recibida | Resuelto por P2: se recibe GTQ; modelo separa declarado/recibido |
 | C9 | Creación del repositorio | Pendiente: el usuario lo crea manualmente |
-| **C10** | **Nuevo:** al anular un aporte que completaba un regalo, el regalo se reabre, pero los excedentes de aportes confirmados después ya quedaron en el fondo general y no se mueven (RN-15). | [PROPUESTA] aceptar este comportamiento; confirmar |
+| C10 | Anulación de un aporte que completaba un regalo | **DECIDIDO:** el regalo se reabre; excedentes posteriores no se mueven; auditoría e historial lo explican |
 
 ---
 
 ## 15. Preguntas abiertas
 
 - **Método de entrega del dinero** (P2 restante) — bloquea solo la publicación real.
-- **P8** anonimato frente a beneficiarios · **P9** administradores (y quién anula, RN-16) ·
+- **P8** anonimato frente a beneficiarios · **P9** resto de permisos de administradores
+  (quién puede confirmar/rechazar; anular ya es solo `owner`) ·
   **P10** acceso a la página y visibilidad de montos individuales · **P11** idioma ·
   **P13** mensajes públicos/privados · **P14** fecha del evento · **P15** contenido de la
   lista · **P16** aporte mínimo.
-- **C10** comportamiento al anular.
 - Hosting de Next.js.

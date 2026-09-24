@@ -16,4 +16,7 @@
 | P12 | 2026-09-24 | Stack | Next.js + Supabase (PostgreSQL, Auth, RLS, Storage si se necesita). | DECIDIDO |
 | ALC | 2026-09-24 | Alcance | Sin pagos reales, transferencias, Stripe, PayPal, Mercado Pago, bancos, Telegram, WhatsApp API, IA, automatizaciones, scraping, compras automáticas ni multi-moneda avanzada. | DECIDIDO |
 | PLAN | 2026-09-24 | Plan | PLAN aprobado con estas decisiones. BUILD solo por fases, después de trasladar la documentación y verificar el repositorio. | DECIDIDO |
-| C10 | — | Anulación y excedentes posteriores | Propuesta: no recalcular aportes posteriores. | PROPUESTA |
+| C10 | 2026-09-24 | Anulación y regalos completados | El regalo se reabre; excedentes posteriores al fondo general no se mueven; no se recalculan aportes históricos; auditoría e historial explican el cambio. | DECIDIDO |
+| P9a | 2026-09-24 | Quién anula | Solo el dueño (`owner`) del evento, en el MVP. | DECIDIDO (MVP) |
+| TASA | 2026-09-24 | Fuente de la tasa | Manual. El administrador la introduce al confirmar. Sin API automática. | DECIDIDO (MVP) |
+| AUT | 2026-09-24 | Autonomía | Avanzar por fases sin aprobación en cada paso, dentro de los límites de alcance; decisiones de negocio, dinero, seguridad, permisos o privacidad se registran como ABIERTO. | DECIDIDO |
